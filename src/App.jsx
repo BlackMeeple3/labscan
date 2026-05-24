@@ -233,9 +233,7 @@ function MiniPad({ value, onChange, maxLen = 4, color = "#4f8ef7" }) {
           opacity: !k ? 0 : 1, WebkitUserSelect: "none", userSelect: "none",
         }}>{k}</button>
       ))}
-      <div style={{ gridColumn: "1 / -1", textAlign: "center", fontFamily: "'JetBrains Mono'", fontSize: 18, fontWeight: 700, color: value ? color : C.muted, minHeight: 24, borderTop: `1px solid ${C.border}`, paddingTop: 6, marginTop: 2 }}>
-        {value || "—"}
-      </div>
+
     </div>
   );
 }
@@ -259,28 +257,45 @@ function NotesInput({ value, onChange }) {
   const recogRef = useRef(null);
 
   function toggleVoice() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) { alert("Riconoscimento vocale non supportato su questo browser."); return; }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { alert("Riconoscimento vocale non supportato. Usa Safari su iPhone."); return; }
 
     if (listening) {
-      recogRef.current?.stop();
+      recogRef.current?.abort();
+      recogRef.current = null;
       setListening(false);
       return;
     }
 
-    const recog = new SpeechRecognition();
+    const recog = new SR();
     recog.lang = "it-IT";
-    recog.continuous = true;
+    recog.continuous = false;      // Safari works better with continuous=false
     recog.interimResults = false;
+    recog.maxAlternatives = 1;
+
+    recog.onstart = () => setListening(true);
+
     recog.onresult = e => {
-      const transcript = Array.from(e.results).map(r => r[0].transcript).join(" ");
-      onChange(value ? value + " " + transcript : transcript);
+      const transcript = e.results[0]?.[0]?.transcript || "";
+      if (transcript) onChange(value ? value + " " + transcript : transcript);
     };
-    recog.onerror = () => setListening(false);
-    recog.onend = () => setListening(false);
-    recog.start();
-    recogRef.current = recog;
-    setListening(true);
+
+    recog.onerror = e => {
+      if (e.error !== "aborted") console.warn("Speech error:", e.error);
+      setListening(false);
+    };
+
+    recog.onend = () => {
+      setListening(false);
+      recogRef.current = null;
+    };
+
+    try {
+      recog.start();
+      recogRef.current = recog;
+    } catch(e) {
+      setListening(false);
+    }
   }
 
   return (
@@ -290,7 +305,7 @@ function NotesInput({ value, onChange }) {
           {listening ? "⏹" : "🎤"}
         </button>
         <span style={{ fontSize: 12, color: C.muted }}>
-          {listening ? "In ascolto… tocca ⏹ per fermare" : "Tocca 🎤 per dettare la nota"}
+          {listening ? "In ascolto… tocca ⏹ per fermare" : "Tocca 🎤 — parla — si ferma da solo"}
         </span>
       </div>
       <textarea rows={3} value={value} onChange={e => onChange(e.target.value)} placeholder="Note libere…" />
@@ -669,13 +684,14 @@ function CompileOverlay({ sample, onSave, onClose, allSamples }) {
 
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
-  const [screen, setScreen] = useState("photo");
+  const [screen, setScreen] = useState("home"); // home | photo | loading | discard | list | summary
   const [imagePreview, setImagePreview] = useState(null);
   const [rawSamples, setRawSamples] = useState([]);
   const [samples, setSamples] = useState([]);
   const [activeSample, setActiveSample] = useState(null);
   const [showManualCode, setShowManualCode] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
+  const [mergeModal, setMergeModal] = useState(null); // null | { newSamples }
   const [toast, setToast] = useState(null);
   const fileRef = useRef();
   const { ready: tessReady, recognize } = useTesseract();
@@ -690,7 +706,6 @@ export default function App() {
       setScreen("loading");
       setOcrProgress(0);
       try {
-        // Simulate progress while Tesseract works
         const interval = setInterval(() => setOcrProgress(p => Math.min(p + 8, 90)), 300);
         const text = await recognize(file);
         clearInterval(interval);
@@ -698,12 +713,43 @@ export default function App() {
         const extracted = extractSamplesFromLines(text);
         setRawSamples(extracted);
         setTimeout(() => {
-          setScreen(extracted.length > 0 ? "discard" : "list");
-          if (extracted.length === 0) setSamples([]);
+          if (extracted.length > 0) {
+            setScreen("discard");
+          } else {
+            setSamples([]);
+            setScreen("list");
+          }
         }, 300);
       } catch (_) { setRawSamples([]); setSamples([]); setScreen("list"); }
     };
     reader.readAsDataURL(file);
+  }
+
+  // Called after discard screen — decide merge or overwrite
+  function handleDiscardConfirm(kept) {
+    if (samples.length > 0) {
+      setMergeModal({ newSamples: kept });
+    } else {
+      setSamples(kept);
+      setScreen("list");
+    }
+  }
+
+  function handleMerge(mode) {
+    const { newSamples } = mergeModal;
+    if (mode === "add") {
+      // Append, avoid duplicates by code+rawText
+      const existing = new Set(samples.map(s => s.code + s.rawText));
+      const toAdd = newSamples.filter(s => !existing.has(s.code + s.rawText));
+      setSamples(prev => [...prev, ...toAdd]);
+      showToast(`${toAdd.length} campioni aggiunti`);
+    } else {
+      // Overwrite
+      setSamples(newSamples);
+      showToast("Lista sostituita");
+    }
+    setMergeModal(null);
+    setScreen("list");
   }
 
   function handleSave(updates) {
@@ -721,7 +767,8 @@ export default function App() {
         <div className="header">
           <div className="header-logo">LAB·SCAN</div>
           <div style={{ display: "flex", gap: 8, marginLeft: "auto", alignItems: "center" }}>
-            {screen === "photo" && samples.length > 0 && <button className="btn-sm" onClick={() => setScreen("list")}>← Lista</button>}
+            {screen === "home" && samples.length > 0 && <button className="btn-sm" onClick={() => setScreen("list")}>← Lista</button>}
+            {screen === "photo" && <button className="btn-sm" onClick={() => setScreen(samples.length > 0 ? "list" : "home")}>← Indietro</button>}
             {screen === "list" && <>
               <span style={{ fontSize: 11, color: C.muted, fontFamily: "'JetBrains Mono'" }}>{filled}/{samples.length}</span>
               {samples.length > 0 && <button className="btn-sm" onClick={() => setScreen("summary")}>📋 Riepilogo</button>}
@@ -731,6 +778,31 @@ export default function App() {
             {screen === "loading" && <button className="btn-sm" onClick={() => setScreen(samples.length > 0 ? "list" : "photo")}>← Annulla</button>}
           </div>
         </div>
+
+        {/* ── Home ── */}
+        {screen === "home" && (
+          <div className="screen" style={{ justifyContent: "center", gap: 24 }}>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 48, marginBottom: 8 }}>🧪</div>
+              <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: C.accent }}>LAB·SCAN</div>
+              <div style={{ fontSize: 13, color: C.muted, marginTop: 6 }}>Gestione campioni da laboratorio</div>
+            </div>
+            <button className="btn btn-primary" onClick={() => setScreen("photo")}>
+              📷 Nuova foto / sessione
+            </button>
+            {samples.length > 0 && (
+              <button className="btn btn-secondary" onClick={() => setScreen("list")}>
+                📋 Continua — {samples.length} campioni ({filled} compilati)
+              </button>
+            )}
+            <button className="btn btn-secondary" onClick={() => { setSamples([]); setScreen("list"); }}>
+              + Sessione vuota manuale
+            </button>
+            {!tessReady && (
+              <div style={{ fontSize: 12, color: C.muted, textAlign: "center" }}>⏳ Caricamento motore OCR…</div>
+            )}
+          </div>
+        )}
 
         {screen === "photo" && (
           <div className="screen">
@@ -759,16 +831,14 @@ export default function App() {
             <div className="loading">
               <div className="spinner" />
               <div style={{ fontSize: 14, color: C.muted }}>Analisi OCR in corso…</div>
-              <div className="progress-bar">
-                <div className="progress-fill" style={{ width: `${ocrProgress}%` }} />
-              </div>
+              <div className="progress-bar"><div className="progress-fill" style={{ width: `${ocrProgress}%` }} /></div>
               <div style={{ fontSize: 12, color: C.muted }}>{ocrProgress}%</div>
             </div>
           </div>
         )}
 
         {screen === "discard" && (
-          <DiscardScreen samples={rawSamples} onConfirm={kept => { setSamples(kept); setScreen("list"); }} />
+          <DiscardScreen samples={rawSamples} onConfirm={handleDiscardConfirm} />
         )}
 
         {screen === "list" && (
@@ -804,6 +874,29 @@ export default function App() {
         )}
 
         {screen === "summary" && <SummaryScreen samples={samples} imagePreview={imagePreview} />}
+
+        {/* ── Merge modal ── */}
+        {mergeModal && (
+          <div className="overlay-bg">
+            <div className="sheet">
+              <div className="handle" />
+              <div className="sh-title">Nuovi campioni trovati</div>
+              <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6 }}>
+                Hai già <strong style={{ color: C.text }}>{samples.length} campioni</strong> in lista.<br />
+                Vuoi aggiungere i <strong style={{ color: C.accent }}>{mergeModal.newSamples.length} nuovi</strong> o sostituire tutto?
+              </div>
+              <button className="btn btn-primary" onClick={() => handleMerge("add")}>
+                ➕ Aggiungi ai campioni esistenti
+              </button>
+              <button className="btn btn-danger" onClick={() => handleMerge("replace")}>
+                🔄 Sostituisci tutto
+              </button>
+              <button className="btn btn-secondary" onClick={() => { setMergeModal(null); setScreen("list"); }}>
+                Annulla
+              </button>
+            </div>
+          </div>
+        )}
 
         {showManualCode && (
           <ManualCodeOverlay
