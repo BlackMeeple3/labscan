@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createWorker } from "tesseract.js";
-import { supabase, TEAM_USERS, getDeviceId, getSavedUser, saveUser, getAvatarUrl } from "./supabase.js";
+import { supabase, SUPABASE_CONFIGURED, TEAM_USERS, getDeviceId, getSavedUser, saveUser, getAvatarUrl } from "./supabase.js";
 
 const C = {
   bg: "#0f1117", surface: "#1a1d27", card: "#22263a",
@@ -166,59 +166,40 @@ function useTesseract() {
 
 // ── Supabase helpers ──────────────────────────────────────────────────────────
 async function loadUserCampioni(userName) {
-  const { data, error } = await supabase
-    .from("campioni")
-    .select("*")
-    .eq("user_name", userName)
-    .order("created_at", { ascending: false });
-  if (error) { console.error(error); return []; }
-  return (data || []).map(r => ({
-    id: r.id,
-    code: r.code,
-    rawText: r.raw_text,
-    data: {
-      pesata: r.pesata || "",
-      superficie: r.superficie || "",
-      allestimento: r.allestimento || null,
-      volume: r.volume || "",
-      articoli: r.articoli || "",
-      note: r.note || "",
-    }
-  }));
+  if (!SUPABASE_CONFIGURED) return [];
+  try {
+    const { data, error } = await supabase.from("campioni").select("*").eq("user_name", userName).order("created_at", { ascending: false });
+    if (error) throw error;
+    return (data || []).map(r => ({ id: r.id, code: r.code, rawText: r.raw_text, data: { pesata: r.pesata || "", superficie: r.superficie || "", allestimento: r.allestimento || null, volume: r.volume || "", articoli: r.articoli || "", note: r.note || "" } }));
+  } catch (_) { return []; }
 }
 
 async function upsertCampione(userName, sample) {
-  const row = {
-    id: sample.id,
-    user_name: userName,
-    code: sample.code,
-    raw_text: sample.rawText,
-    pesata: sample.data?.pesata || null,
-    superficie: sample.data?.superficie || null,
-    allestimento: sample.data?.allestimento || null,
-    volume: sample.data?.volume || null,
-    articoli: sample.data?.articoli || null,
-    note: sample.data?.note || null,
-  };
-  const { error } = await supabase.from("campioni").upsert(row, { onConflict: "id" });
-  if (error) console.error("upsert error:", error);
-}
-
-async function getAvailableUsers() {
-  const { data, error } = await supabase.from("team_users").select("name, device_id");
-  if (error) { console.error(error); return TEAM_USERS; }
-  const deviceId = getDeviceId();
-  // Show only users with no device_id, or whose device_id matches this device
-  return (data || []).filter(u => !u.device_id || u.device_id === deviceId).map(u => u.name);
+  if (!SUPABASE_CONFIGURED) return;
+  try {
+    const row = { id: sample.id, user_name: userName, code: sample.code, raw_text: sample.rawText, pesata: sample.data?.pesata || null, superficie: sample.data?.superficie || null, allestimento: sample.data?.allestimento || null, volume: sample.data?.volume || null, articoli: sample.data?.articoli || null, note: sample.data?.note || null };
+    await supabase.from("campioni").upsert(row, { onConflict: "id" });
+  } catch (_) {}
 }
 
 async function claimUser(userName) {
-  const deviceId = getDeviceId();
-  const { error } = await supabase.from("team_users")
-    .update({ device_id: deviceId })
-    .eq("name", userName);
-  if (error) console.error("claim error:", error);
+  if (SUPABASE_CONFIGURED) {
+    try {
+      const deviceId = getDeviceId();
+      await supabase.from("team_users").update({ device_id: deviceId }).eq("name", userName);
+    } catch (_) {}
+  }
   saveUser(userName);
+}
+
+async function getAvailableUsers() {
+  if (!SUPABASE_CONFIGURED) return TEAM_USERS;
+  try {
+    const { data, error } = await supabase.from("team_users").select("name, device_id");
+    if (error) throw error;
+    const deviceId = getDeviceId();
+    return (data || []).filter(u => !u.device_id || u.device_id === deviceId).map(u => u.name);
+  } catch (_) { return TEAM_USERS; }
 }
 
 // ── NumPadInput ───────────────────────────────────────────────────────────────
@@ -607,11 +588,14 @@ function CompileOverlay({ sample, onSave, onClose, allSamples }) {
 
 // ── UserSelectScreen ──────────────────────────────────────────────────────────
 function UserSelectScreen({ onSelect }) {
-  const [available, setAvailable] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Start with all users immediately — no loading spinner
+  const [available, setAvailable] = useState(TEAM_USERS);
 
   useEffect(() => {
-    getAvailableUsers().then(users => { setAvailable(users); setLoading(false); });
+    // Refine list from Supabase in background (removes taken users)
+    if (SUPABASE_CONFIGURED) {
+      getAvailableUsers().then(users => { if (users.length > 0) setAvailable(users); });
+    }
   }, []);
 
   return (
@@ -621,32 +605,27 @@ function UserSelectScreen({ onSelect }) {
         <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: "#4f8ef7" }}>LAB·SCAN</div>
         <div style={{ fontSize: 13, color: "#7a8099", marginTop: 6 }}>Chi sei?</div>
       </div>
-      {loading ? (
-        <div className="spinner" />
-      ) : (
-        <div className="user-grid">
-          {available.map(name => (
-            <div key={name} className="user-avatar-wrap" onClick={() => onSelect(name)}>
-              <div className="user-avatar">
-                <img
-                  src={getAvatarUrl(name)}
-                  alt={name}
-                  onError={e => {
-                    // Try png fallback, then show initial
-                    if (e.target.src.endsWith(".jpg")) {
-                      e.target.src = getAvatarUrl(name).replace(".jpg", ".png");
-                    } else {
-                      e.target.style.display = "none";
-                      e.target.parentNode.innerHTML = `<span style="font-size:32px;color:#4f8ef7;font-weight:700">${name[0]}</span>`;
-                    }
-                  }}
-                />
-              </div>
-              <div className="user-name">{name}</div>
+      <div className="user-grid">
+        {available.map(name => (
+          <div key={name} className="user-avatar-wrap" onClick={() => onSelect(name)}>
+            <div className="user-avatar">
+              <img
+                src={getAvatarUrl(name)}
+                alt={name}
+                onError={e => {
+                  if (e.target.src && e.target.src.endsWith(".jpg")) {
+                    e.target.src = getAvatarUrl(name).replace(".jpg", ".png");
+                  } else {
+                    e.target.style.display = "none";
+                    e.target.parentNode.innerHTML = `<span style="font-size:32px;color:#4f8ef7;font-weight:700">${name[0]}</span>`;
+                  }
+                }}
+              />
             </div>
-          ))}
-        </div>
-      )}
+            <div className="user-name">{name}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
