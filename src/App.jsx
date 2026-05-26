@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createWorker } from "tesseract.js";
-import { supabase, SUPABASE_CONFIGURED, TEAM_USERS, getDeviceId, getSavedUser, saveUser, getAvatarUrl } from "./supabase.js";
+import { supabase, SUPABASE_CONFIGURED, TEAM_USERS, getAvatarUrl } from "./supabase.js";
 
 const C = {
   bg: "#0f1117", surface: "#1a1d27", card: "#22263a",
@@ -132,6 +132,21 @@ const ALLESTIMENTI = [
   "Single-Side (Sim. E: MPPO)",
 ];
 
+const ALLESTIMENTO_DEFAULTS = {
+  "Immersione spessore <0,5mm (1dm2 in 100ml)": { superficie: "1", volume: "100" },
+  "Immersione spessore >=0,5mm (1dm2 in 100ml)": { superficie: "1", volume: "100" },
+  "Riempimento <500ML": { superficie: "", volume: "" },
+  "Riempimento >=500ML": { superficie: "", volume: "" },
+  "Riempimento (sup. non calcolabile)": { superficie: "", volume: "" },
+  "Cella (0,5dm2 in 50ml)": { superficie: "0.5", volume: "50" },
+  "Cella (1dm2 in 100ml)": { superficie: "1", volume: "100" },
+  "Cella (2dm2 in 200ml)": { superficie: "2", volume: "200" },
+  "Tasca (2dm2 in 100ml)": { superficie: "2", volume: "100" },
+  "Single-Side (Sim. E: MPPO)": { superficie: "", volume: "" },
+};
+
+const OT_OPTIONS = ["MT", "AI", "AJ", "AT"];
+
 const STUFE = [
   "C.I. 29 (5-40 C)",
   "C.I. 7 (40-70 C)",
@@ -185,11 +200,19 @@ function useTesseract() {
 }
 
 // ── Supabase helpers ──────────────────────────────────────────────────────────
-async function loadUserCampioni(userName) {
+async function loadUserCampioni(userName, onlyToday = false) {
   if (!SUPABASE_CONFIGURED) return [];
   try {
-    const { data, error } = await supabase.from("campioni").select("*").eq("user_name", userName).order("created_at", { ascending: false });
+    let query = supabase.from("campioni").select("*").eq("user_name", userName).order("created_at", { ascending: false }).limit(50);
+    if (onlyToday) {
+      const today = new Date().toISOString().split("T")[0];
+      query = query.gte("created_at", today + "T00:00:00Z");
+    }
+    const { data, error } = await query;
     if (error) throw error;
+    if (!onlyToday && data && data.length === 50) {
+      alert("Attenzione: sono stati caricati i 50 campioni più recenti. Potrebbero essercene altri nel database.");
+    }
     return (data || []).map(r => ({ id: r.id, code: r.codice_id, rawText: r.descrizione_campione, richiedente: r.richiedente, codice_analisi: r.codice_analisi, valore: r.valore, nota_param: r.nota_param, tipologia_prova: r.tipologia_prova, tipologia_analisi: r.tipologia_analisi, data: { pesata: r.pesata || "", superficie: r.superficie || "", allestimento: r.modalita_allestimento || null, volume: r.volume_peso || "", articoli: r.numero_articoli || "", stufa: r.stufa || null, inizio_contatto: r.inizio_contatto || "", ot: r.ot || "", note: r.note_oggetti || "" } }));
   } catch (_) { return []; }
 }
@@ -202,25 +225,7 @@ async function upsertCampione(userName, sample) {
   } catch (_) {}
 }
 
-async function claimUser(userName) {
-  if (SUPABASE_CONFIGURED) {
-    try {
-      const deviceId = getDeviceId();
-      await supabase.from("team_users").update({ device_id: deviceId }).eq("name", userName);
-    } catch (_) {}
-  }
-  saveUser(userName);
-}
-
-async function getAvailableUsers() {
-  if (!SUPABASE_CONFIGURED) return TEAM_USERS;
-  try {
-    const { data, error } = await supabase.from("team_users").select("name, device_id");
-    if (error) throw error;
-    const deviceId = getDeviceId();
-    return (data || []).filter(u => !u.device_id || u.device_id === deviceId).map(u => u.name);
-  } catch (_) { return TEAM_USERS; }
-}
+// No device tracking — user chooses every session
 
 // ── NumPadInput ───────────────────────────────────────────────────────────────
 function NumPadInput({ value, onChange, unit = "", decimalDigits = 2 }) {
@@ -287,27 +292,18 @@ function NumInput({ value, onChange, step = 1, unit = "" }) {
 }
 
 function NotesInput({ value, onChange }) {
-  const [listening, setListening] = useState(false);
-  const recogRef = useRef(null);
-  function toggleVoice() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { alert("Usa il microfono della tastiera iOS (tasto 🎤)."); return; }
-    if (listening) { recogRef.current?.abort(); recogRef.current = null; setListening(false); return; }
-    const recog = new SR();
-    recog.lang = "it-IT"; recog.continuous = false; recog.interimResults = false; recog.maxAlternatives = 1;
-    recog.onstart = () => setListening(true);
-    recog.onresult = e => { const t = e.results[0]?.[0]?.transcript || ""; if (t) onChange(value ? value + " " + t : t); };
-    recog.onerror = e => { if (e.error !== "aborted") console.warn(e.error); setListening(false); };
-    recog.onend = () => { setListening(false); recogRef.current = null; };
-    try { recog.start(); recogRef.current = recog; } catch(e) { setListening(false); }
-  }
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <div className="mic-row">
-        <button className={`mic-btn ${listening ? "mic-rec" : "mic-idle"}`} onClick={toggleVoice}>{listening ? "⏹" : "🎤"}</button>
-        <span style={{ fontSize: 12, color: "#7a8099" }}>{listening ? "In ascolto… tocca ⏹ per fermare" : "Tocca 🎤 — parla — si ferma da solo"}</span>
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <textarea
+        rows={3}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder="Note libere… (usa il microfono 🎤 sulla tastiera)"
+        style={{ background: "#22263a", border: "1px solid #2e3350", borderRadius: 10, color: "#e8eaf0", fontFamily: "'DM Sans', sans-serif", fontSize: 14, padding: "10px 12px", width: "100%", resize: "none", outline: "none", lineHeight: 1.5 }}
+      />
+      <div style={{ fontSize: 11, color: "#7a8099" }}>
+        💡 Su iPhone/Android usa il tasto 🎤 sulla tastiera per dettare
       </div>
-      <textarea rows={3} value={value} onChange={e => onChange(e.target.value)} placeholder="Note libere…" />
     </div>
   );
 }
@@ -532,12 +528,37 @@ function CompileOverlay({ sample, onSave, onClose, allSamples }) {
   const [selected, setSelected] = useState([]);
   const [confirmQueue, setConfirmQueue] = useState([]);
   const [currentConfirm, setCurrentConfirm] = useState(null);
+  const [showHidden, setShowHidden] = useState(false);
+  const [defaultConfirm, setDefaultConfirm] = useState(null); // { a, defaults, existing }
   const set = (k, v) => setD(prev => ({ ...prev, [k]: v }));
-  const unit = getUnit(d.allestimento);
-  const volLabel = "Volume/Peso";
   const others = allSamples.filter(s => s.id !== sample.id);
 
+  const isQM = sample.tipologia_analisi === "QM";
+  const showPesata = isQM || showHidden;
+
+  function handleAllestimento(a) {
+    if (d.allestimento === a) { set("allestimento", null); set("volume", ""); return; }
+    const defaults = ALLESTIMENTO_DEFAULTS[a] || { superficie: "", volume: "" };
+    const hasExisting = (d.superficie && d.superficie !== defaults.superficie) ||
+                        (d.volume && d.volume !== defaults.volume);
+    if (hasExisting && (defaults.superficie || defaults.volume)) {
+      setDefaultConfirm({ a, defaults, existing: { superficie: d.superficie, volume: d.volume } });
+    } else {
+      applyAllestimento(a, defaults);
+    }
+  }
+
+  function applyAllestimento(a, defaults, keepExisting = false) {
+    set("allestimento", a);
+    if (!keepExisting) {
+      if (defaults.superficie) set("superficie", defaults.superficie);
+      if (defaults.volume) set("volume", defaults.volume);
+    }
+    setDefaultConfirm(null);
+  }
+
   function saveAndPropagate() { onSave([{ id: sample.id, data: { ...d } }]); setPhase("propagate"); }
+
   function applyPropagation() {
     if (!selected.length) { onClose(); return; }
     const targets = selected.map(id => allSamples.find(s => s.id === id)).filter(Boolean);
@@ -545,11 +566,36 @@ function CompileOverlay({ sample, onSave, onClose, allSamples }) {
     const q = targets.filter(s => isDataFilled(s.data));
     if (q.length) { setConfirmQueue(q); setCurrentConfirm(q[0]); setPhase("confirm"); } else onClose();
   }
+
   function handleConfirm(yes) {
     if (yes) onSave([{ id: currentConfirm.id, data: { ...d } }]);
     const next = confirmQueue.slice(1);
     if (next.length) { setConfirmQueue(next); setCurrentConfirm(next[0]); } else onClose();
   }
+
+  // Default confirm modal
+  if (defaultConfirm) return (
+    <div className="overlay-bg"><div className="sheet">
+      <div className="handle" />
+      <div className="sh-title" style={{ color: "#f39c12" }}>⚠️ Valori già presenti</div>
+      <div style={{ fontSize: 13, color: "#e8eaf0", lineHeight: 1.6 }}>
+        Hai già:<br />
+        {defaultConfirm.existing.superficie && <><strong>Superficie:</strong> {defaultConfirm.existing.superficie} dm²<br /></>}
+        {defaultConfirm.existing.volume && <><strong>Volume/Peso:</strong> {defaultConfirm.existing.volume} ml/g<br /></>}
+        <br />
+        I default per <strong style={{ color: "#4f8ef7" }}>{defaultConfirm.a}</strong> sono:<br />
+        {defaultConfirm.defaults.superficie && <><strong>Superficie:</strong> {defaultConfirm.defaults.superficie} dm²<br /></>}
+        {defaultConfirm.defaults.volume && <><strong>Volume/Peso:</strong> {defaultConfirm.defaults.volume} ml/g<br /></>}
+      </div>
+      <button className="btn btn-primary" onClick={() => applyAllestimento(defaultConfirm.a, defaultConfirm.defaults, false)}>
+        Applica default (sovrascrivi)
+      </button>
+      <button className="btn btn-secondary" onClick={() => applyAllestimento(defaultConfirm.a, defaultConfirm.defaults, true)}>
+        Mantieni valori esistenti
+      </button>
+      <button className="btn btn-secondary" onClick={() => setDefaultConfirm(null)}>Annulla</button>
+    </div></div>
+  );
 
   if (phase === "confirm") return (
     <div className="overlay-bg"><div className="sheet">
@@ -577,7 +623,7 @@ function CompileOverlay({ sample, onSave, onClose, allSamples }) {
               <div className="prop-check">{selected.includes(s.id) ? "✓" : ""}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: "'JetBrains Mono'", fontSize: 13, fontWeight: 700, color: "#4f8ef7" }}>{s.code || "—"}</div>
-                <div style={{ fontSize: 11, color: "#7a8099", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.rawText}</div>
+                <div style={{ fontSize: 11, color: "#7a8099", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.tipologia_prova || s.rawText}</div>
               </div>
               {isDataFilled(s.data) && <span className="badge badge-warn">compilato</span>}
             </div>
@@ -596,14 +642,14 @@ function CompileOverlay({ sample, onSave, onClose, allSamples }) {
       <InfoPanel sample={sample} />
       <div className="divider" />
 
-      {/* Allestimento — scrollable chip list */}
+      {/* Allestimento */}
       <div>
         <div className="field-label">Modalità allestimento</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {ALLESTIMENTI.map(a => (
             <div key={a}
-              style={{ padding: "11px 14px", borderRadius: 10, border: `1px solid ${d.allestimento === a ? "#4f8ef7" : "#2e3350"}`, background: d.allestimento === a ? "#2a4a8a" : "#22263a", color: d.allestimento === a ? "#4f8ef7" : "#7a8099", fontSize: 13, cursor: "pointer", fontWeight: d.allestimento === a ? 700 : 500, WebkitUserSelect: "none", userSelect: "none", whiteSpace: "pre-line" }}
-              onClick={() => { if (d.allestimento === a) { set("allestimento", null); set("volume", ""); } else { set("allestimento", a); } }}>
+              style={{ padding: "11px 14px", borderRadius: 10, border: `1px solid ${d.allestimento === a ? "#4f8ef7" : "#2e3350"}`, background: d.allestimento === a ? "#2a4a8a" : "#22263a", color: d.allestimento === a ? "#4f8ef7" : "#7a8099", fontSize: 13, cursor: "pointer", fontWeight: d.allestimento === a ? 700 : 500, WebkitUserSelect: "none", userSelect: "none" }}
+              onClick={() => handleAllestimento(a)}>
               {a}
             </div>
           ))}
@@ -611,17 +657,18 @@ function CompileOverlay({ sample, onSave, onClose, allSamples }) {
         {d.allestimento && <div style={{ fontSize: 11, color: "#7a8099", marginTop: 4 }}>Tocca di nuovo per deselezionare</div>}
       </div>
 
-      {/* Pesata */}
-      <div><div className="field-label">Pesata</div><NumPadInput value={d.pesata} onChange={v => set("pesata", v)} unit="g" decimalDigits={2} /></div>
+      {/* Pesata — solo QM o se scoperto */}
+      {!isQM && !showHidden && (
+        <button className="btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => setShowHidden(true)}>
+          👁 Mostra campi pesata
+        </button>
+      )}
 
-      {/* Volume/Peso */}
-      <div>
-        <div className="field-label">Volume / Peso (ml/g)</div>
-        <NumPadInput value={d.volume} onChange={v => set("volume", v)} unit="ml/g" decimalDigits={2} />
-      </div>
-
-      {/* Superficie */}
-      <div><div className="field-label">Superficie</div><NumInput value={d.superficie} onChange={v => set("superficie", v)} step={0.5} unit="dm²" /></div>
+      {showPesata && <>
+        <div><div className="field-label">Pesata</div><NumPadInput value={d.pesata} onChange={v => set("pesata", v)} unit="g" decimalDigits={2} /></div>
+        <div><div className="field-label">Volume / Peso (ml/g)</div><NumPadInput value={d.volume} onChange={v => set("volume", v)} unit="ml/g" decimalDigits={2} /></div>
+        <div><div className="field-label">Superficie</div><NumPadInput value={d.superficie} onChange={v => set("superficie", v)} unit="dm²" decimalDigits={2} /></div>
+      </>}
 
       {/* N° Articoli */}
       <div><div className="field-label">N° Articoli</div><NumInput value={d.articoli} onChange={v => set("articoli", v)} step={1} unit="pz" /></div>
@@ -632,7 +679,7 @@ function CompileOverlay({ sample, onSave, onClose, allSamples }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {STUFE.map(s => (
             <div key={s}
-              style={{ padding: "11px 14px", borderRadius: 10, border: `1px solid ${d.stufa === s ? "#4f8ef7" : "#2e3350"}`, background: d.stufa === s ? "#2a4a8a" : "#22263a", color: d.stufa === s ? "#4f8ef7" : "#7a8099", fontSize: 13, cursor: "pointer", fontWeight: d.stufa === s ? 700 : 500, WebkitUserSelect: "none", userSelect: "none", whiteSpace: "pre-line" }}
+              style={{ padding: "11px 14px", borderRadius: 10, border: `1px solid ${d.stufa === s ? "#4f8ef7" : "#2e3350"}`, background: d.stufa === s ? "#2a4a8a" : "#22263a", color: d.stufa === s ? "#4f8ef7" : "#7a8099", fontSize: 13, cursor: "pointer", fontWeight: d.stufa === s ? 700 : 500, WebkitUserSelect: "none", userSelect: "none" }}
               onClick={() => set("stufa", d.stufa === s ? null : s)}>
               {s}
             </div>
@@ -643,24 +690,26 @@ function CompileOverlay({ sample, onSave, onClose, allSamples }) {
       {/* Inizio contatto */}
       <div>
         <div className="field-label">Inizio contatto</div>
-        <input
-          type="date"
-          value={d.inizio_contatto || ""}
-          onChange={e => set("inizio_contatto", e.target.value)}
-          style={{ background: "#22263a", border: "1px solid #2e3350", borderRadius: 10, color: "#e8eaf0", fontFamily: "'JetBrains Mono', monospace", fontSize: 16, padding: "12px 14px", width: "100%", outline: "none" }}
-        />
+        <div className="row" style={{ alignItems: "center" }}>
+          <input type="date" value={d.inizio_contatto || ""} onChange={e => set("inizio_contatto", e.target.value)}
+            style={{ flex: 1, background: "#22263a", border: "1px solid #2e3350", borderRadius: 10, color: "#e8eaf0", fontFamily: "'JetBrains Mono', monospace", fontSize: 16, padding: "12px 14px", outline: "none" }} />
+          <button className="btn-sm" onClick={() => set("inizio_contatto", new Date().toISOString().split("T")[0])}
+            style={{ flexShrink: 0, marginLeft: 8 }}>📅 Oggi</button>
+        </div>
       </div>
 
       {/* OT */}
       <div>
-        <div className="field-label">OT</div>
-        <input
-          type="text"
-          value={d.ot || ""}
-          onChange={e => set("ot", e.target.value)}
-          placeholder="Numero OT…"
-          style={{ background: "#22263a", border: "1px solid #2e3350", borderRadius: 10, color: "#e8eaf0", fontFamily: "'JetBrains Mono', monospace", fontSize: 16, padding: "12px 14px", width: "100%", outline: "none" }}
-        />
+        <div className="field-label">OT — Operatore Tecnico</div>
+        <div className="chip-row" style={{ marginBottom: 8 }}>
+          {OT_OPTIONS.map(o => (
+            <div key={o} className={`chip ${d.ot === o ? "on" : ""}`} style={{ flex: "none", minWidth: "auto", padding: "10px 16px" }}
+              onClick={() => set("ot", d.ot === o ? "" : o)}>{o}</div>
+          ))}
+        </div>
+        <input type="text" value={d.ot || ""} onChange={e => set("ot", e.target.value)}
+          placeholder="Oppure scrivi sigla personalizzata…"
+          style={{ background: "#22263a", border: "1px solid #2e3350", borderRadius: 10, color: "#e8eaf0", fontFamily: "'JetBrains Mono', monospace", fontSize: 15, padding: "10px 14px", width: "100%", outline: "none" }} />
       </div>
 
       {/* Note */}
@@ -677,16 +726,6 @@ function CompileOverlay({ sample, onSave, onClose, allSamples }) {
 
 // ── UserSelectScreen ──────────────────────────────────────────────────────────
 function UserSelectScreen({ onSelect }) {
-  // Start with all users immediately — no loading spinner
-  const [available, setAvailable] = useState(TEAM_USERS);
-
-  useEffect(() => {
-    // Refine list from Supabase in background (removes taken users)
-    if (SUPABASE_CONFIGURED) {
-      getAvailableUsers().then(users => { if (users.length > 0) setAvailable(users); });
-    }
-  }, []);
-
   return (
     <div className="user-select-screen">
       <div style={{ textAlign: "center" }}>
@@ -695,12 +734,10 @@ function UserSelectScreen({ onSelect }) {
         <div style={{ fontSize: 13, color: "#7a8099", marginTop: 6 }}>Chi sei?</div>
       </div>
       <div className="user-grid">
-        {available.map(name => (
+        {TEAM_USERS.map(name => (
           <div key={name} className="user-avatar-wrap" onClick={() => onSelect(name)}>
             <div className="user-avatar">
-              <img
-                src={getAvatarUrl(name)}
-                alt={name}
+              <img src={getAvatarUrl(name)} alt={name}
                 onError={e => {
                   if (e.target.src && e.target.src.endsWith(".jpg")) {
                     e.target.src = getAvatarUrl(name).replace(".jpg", ".png");
@@ -735,22 +772,12 @@ export default function App() {
   const fileRef = useRef();
   const { ready: tessReady, recognize } = useTesseract();
 
-  // On mount: check if device already has a user
-  useEffect(() => {
-    const saved = getSavedUser();
-    if (saved) {
-      setCurrentUser(saved);
-      // Load their samples from Supabase
-      loadUserCampioni(saved).then(data => { setSamples(data); setAppReady(true); });
-    } else {
-      setAppReady(true);
-    }
-  }, []);
+  // Always start at user selection — no device tracking
+  useEffect(() => { setAppReady(true); }, []);
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(null), 1800); };
 
   async function handleUserSelect(name) {
-    await claimUser(name);
     setCurrentUser(name);
     const data = await loadUserCampioni(name);
     setSamples(data);
@@ -840,7 +867,8 @@ export default function App() {
           <div className="header-logo">LAB·SCAN</div>
           <div style={{ display: "flex", gap: 8, marginLeft: "auto", alignItems: "center" }}>
             {/* User avatar in header */}
-            <div style={{ width: 28, height: 28, borderRadius: "50%", overflow: "hidden", background: "#22263a", border: "2px solid #2e3350", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ width: 28, height: 28, borderRadius: "50%", overflow: "hidden", background: "#22263a", border: "2px solid #2e3350", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+              onClick={() => { setCurrentUser(null); setSamples([]); }}>
               <img src={getAvatarUrl(currentUser)} alt={currentUser} style={{ width: "100%", height: "100%", objectFit: "cover" }}
                 onError={e => { e.target.style.display = "none"; e.target.parentNode.innerHTML = `<span style="font-size:13px;color:#4f8ef7;font-weight:700">${currentUser[0]}</span>`; }} />
             </div>
@@ -868,6 +896,11 @@ export default function App() {
                 📋 Continua — {samples.length} campioni ({filled} compilati)
               </button>
             )}
+            <button className="btn btn-secondary" onClick={async () => {
+              const today = await loadUserCampioni(currentUser, true);
+              setSamples(today);
+              setScreen("list");
+            }}>📅 Inserimenti di oggi</button>
             <button className="btn btn-secondary" onClick={() => { setSamples([]); setScreen("list"); }}>+ Sessione vuota manuale</button>
             {!tessReady && <div style={{ fontSize: 12, color: "#7a8099", textAlign: "center" }}>⏳ Caricamento motore OCR…</div>}
           </div>
@@ -917,7 +950,7 @@ export default function App() {
                       {s.code || <span style={{ color: "#f39c12" }}>⚠ Codice non trovato</span>}
                       {isDataFilled(s.data) && <span className="badge badge-ok" style={{ marginLeft: "auto" }}>✓</span>}
                     </div>
-                    <div className="s-text">{s.rawText}</div>
+                    <div className="s-text">{s.tipologia_prova || s.rawText}</div>
                   </div>
                 ))}
               </div>
