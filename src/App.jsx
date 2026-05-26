@@ -369,12 +369,12 @@ function buildReportText(samples, userName) {
     lines.push(`${i + 1}. ${s.code || "—"}`);
     lines.push(`   Info: ${s.rawText}`);
     if (d) {
-      if (d.allestimento) lines.push(\`   Allestimento: \${d.allestimento}\`);
-      if (d.stufa) lines.push(\`   Stufa: \${d.stufa}\`);
-      if (d.inizio_contatto) lines.push(\`   Inizio contatto: \${d.inizio_contatto}\`);
-      if (d.ot) lines.push(\`   OT: \${d.ot}\`);
+      if (d.allestimento) lines.push(`   Allestimento: ${d.allestimento}`);
+      if (d.stufa) lines.push(`   Stufa: ${d.stufa}`);
+      if (d.inizio_contatto) lines.push(`   Inizio contatto: ${d.inizio_contatto}`);
+      if (d.ot) lines.push(`   OT: ${d.ot}`);
       if (d.pesata) lines.push(`   Pesata: ${d.pesata} g`);
-      if (d.volume && d.allestimento) lines.push(`   ${d.allestimento === "Vassoio" ? "Peso" : "Volume"}: ${d.volume} ${ALLESTIMENTO_UNIT[d.allestimento]}`);
+      if (d.volume) lines.push(`   Volume/Peso: ${d.volume} ml/g`);
       if (d.superficie) lines.push(`   Superficie: ${d.superficie} dm²`);
       if (d.articoli) lines.push(`   N° articoli: ${d.articoli}`);
       if (d.note) lines.push(`   Note: ${d.note}`);
