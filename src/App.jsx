@@ -144,7 +144,7 @@ const ALLESTIMENTO_DEFAULTS = {
   "Single-Side (Sim. E: MPPO)": { superficie: "", volume: "" },
 };
 
-const OT_OPTIONS = ["MT", "AI", "AJ", "AT"];
+const OT_OPTIONS = ["MT", "AI", "AJ", "AT", "AM", "FDS"];
 
 const STUFE = [
   "C.I. 29 (5-40 C)",
@@ -244,16 +244,19 @@ function MiniPad({ value, onChange, maxLen = 4, color = "#4f8ef7" }) {
   function press(d) { if (d === "⌫") { onChange(value.slice(0, -1)); return; } if (value.length >= maxLen) return; onChange(value + d); }
   const keys = ["7","8","9","4","5","6","1","2","3","⌫","0",""];
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 5 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 5, touchAction: "manipulation" }}>
       {keys.map((k, i) => (
-        <button key={i} onClick={() => k && press(k)} style={{
-          height: 52, borderRadius: 10, border: k && k !== "⌫" ? "1px solid #2e3350" : "none",
-          background: k === "⌫" ? "#2a4a8a" : k === "" ? "transparent" : "#22263a",
-          color: k === "⌫" ? "#4f8ef7" : "#e8eaf0",
-          fontSize: k === "⌫" ? 18 : 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace",
-          cursor: k ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center",
-          opacity: !k ? 0 : 1, WebkitUserSelect: "none", userSelect: "none",
-        }}>{k}</button>
+        <button key={i}
+          onPointerDown={e => { e.preventDefault(); if (k) press(k); }}
+          style={{
+            height: 52, borderRadius: 10, border: k && k !== "⌫" ? "1px solid #2e3350" : "none",
+            background: k === "⌫" ? "#2a4a8a" : k === "" ? "transparent" : "#22263a",
+            color: k === "⌫" ? "#4f8ef7" : "#e8eaf0",
+            fontSize: k === "⌫" ? 18 : 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace",
+            cursor: k ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center",
+            opacity: !k ? 0 : 1, WebkitUserSelect: "none", userSelect: "none",
+            touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
+          }}>{k}</button>
       ))}
     </div>
   );
@@ -569,6 +572,67 @@ function ManualCodeOverlay({ onConfirm, onClose, currentUser }) {
   );
 }
 
+// ── FieldConfirmOverlay — per-field overwrite selection ───────────────────────
+function FieldConfirmOverlay({ sample, conflictFields, autoFields, sourceData, fieldLabels, remaining, onConfirm, onSkip }) {
+  const [overwrite, setOverwrite] = useState(() => {
+    const init = {};
+    conflictFields.forEach(k => { init[k] = true; }); // default: overwrite all
+    return init;
+  });
+
+  function toggle(k) { setOverwrite(prev => ({ ...prev, [k]: !prev[k] })); }
+
+  function confirm() { onConfirm(overwrite); }
+
+  return (
+    <div className="overlay-bg"><div className="sheet">
+      <div className="handle" />
+      <div className="sh-title">Campi da sovrascrivere?</div>
+      <InfoPanel sample={sample} />
+
+      {autoFields.length > 0 && (
+        <div style={{ fontSize: 12, color: "#2ecc71", background: "#1a4a30", borderRadius: 8, padding: "8px 12px" }}>
+          ✓ Scritti automaticamente (destinazione vuota): {autoFields.map(k => fieldLabels[k] || k).join(", ")}
+        </div>
+      )}
+
+      {conflictFields.length > 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ fontSize: 12, color: "#7a8099" }}>Spunta = sovrascrivi, deseleziona = mantieni esistente:</div>
+          {conflictFields.map(k => (
+            <div key={k}
+              onClick={() => toggle(k)}
+              style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", borderRadius: 10, background: "#22263a", border: `1px solid ${overwrite[k] ? "#4f8ef7" : "#2e3350"}`, cursor: "pointer" }}>
+              <div style={{ width: 20, height: 20, borderRadius: 6, border: `2px solid ${overwrite[k] ? "#4f8ef7" : "#2e3350"}`, background: overwrite[k] ? "#4f8ef7" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 13, flexShrink: 0, marginTop: 1 }}>
+                {overwrite[k] ? "✓" : ""}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#e8eaf0" }}>{fieldLabels[k] || k}</div>
+                <div style={{ fontSize: 11, color: "#7a8099", marginTop: 2 }}>
+                  <span style={{ color: "#e74c3c" }}>Attuale: {sample.data?.[k] || "—"}</span>
+                  {"  →  "}
+                  <span style={{ color: "#2ecc71" }}>Nuovo: {sourceData[k] || "—"}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ fontSize: 13, color: "#7a8099", textAlign: "center", padding: "8px 0" }}>
+          Nessun conflitto — verranno scritti solo i campi vuoti.
+        </div>
+      )}
+
+      {remaining > 1 && <div style={{ color: "#7a8099", fontSize: 12, textAlign: "center" }}>{remaining - 1} campioni rimanenti</div>}
+
+      <div className="row">
+        <button className="btn btn-secondary f1" onClick={onSkip}>Salta questo</button>
+        <button className="btn btn-primary f1" onClick={confirm}>Applica</button>
+      </div>
+    </div></div>
+  );
+}
+
 // ── SectionHeader — collapsible section with eye emoji ───────────────────────
 function SectionHeader({ label, open, onToggle }) {
   return (
@@ -623,18 +687,42 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
   function applyPropagation() {
     if (!selected.length) { onClose(); return; }
     const targets = selected.map(id => allSamples.find(s => s.id === id)).filter(Boolean);
+    // Empty targets — apply directly
     onSave(targets.filter(s => !isDataFilled(s.data)).map(s => ({ id: s.id, data: { ...d } })));
+    // Filled targets — go to field-by-field confirm
     const q = targets.filter(s => isDataFilled(s.data));
     if (q.length) { setConfirmQueue(q); setCurrentConfirm(q[0]); setPhase("confirm"); } else onClose();
   }
 
-  function handleConfirm(yes) {
-    if (yes) onSave([{ id: currentConfirm.id, data: { ...d } }]);
+  function handleFieldConfirm(fieldOverrides) {
+    // fieldOverrides = { pesata: true, volume: false, ... } — true means overwrite
+    const newData = { ...currentConfirm.data };
+    Object.keys(d).forEach(k => {
+      const srcVal = d[k];
+      const dstVal = currentConfirm.data?.[k];
+      // Always write if destination empty
+      if (!dstVal) { newData[k] = srcVal; return; }
+      // Same value — skip
+      if (srcVal === dstVal) return;
+      // Different value — check user choice
+      if (fieldOverrides[k]) newData[k] = srcVal;
+    });
+    onSave([{ id: currentConfirm.id, data: newData }]);
     const next = confirmQueue.slice(1);
     if (next.length) { setConfirmQueue(next); setCurrentConfirm(next[0]); } else onClose();
   }
 
-  // Default confirm modal
+  // Field labels for display
+  const FIELD_LABELS = {
+    pesata: "Pesata 1", pesata2: "Pesata 2", pesata3: "Pesata 3",
+    grammatura: "Grammatura", tipo_campione: "Tipo campione",
+    allestimento: "Allestimento", volume: "Volume/Peso",
+    superficie: "Superficie", articoli: "N° Articoli",
+    stufa: "Stufa", inizio_contatto: "Inizio contatto",
+    ot: "OT", note: "Note",
+  };
+
+  // Default confirm modal (allestimento defaults)
   if (defaultConfirm) return (
     <div className="overlay-bg"><div className="sheet">
       <div className="handle" />
@@ -648,30 +736,40 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
         {defaultConfirm.defaults.superficie && <><strong>Superficie:</strong> {defaultConfirm.defaults.superficie} dm²<br /></>}
         {defaultConfirm.defaults.volume && <><strong>Volume/Peso:</strong> {defaultConfirm.defaults.volume} ml/g<br /></>}
       </div>
-      <button className="btn btn-primary" onClick={() => applyAllestimento(defaultConfirm.a, defaultConfirm.defaults, false)}>
-        Applica default (sovrascrivi)
-      </button>
-      <button className="btn btn-secondary" onClick={() => applyAllestimento(defaultConfirm.a, defaultConfirm.defaults, true)}>
-        Mantieni valori esistenti
-      </button>
+      <button className="btn btn-primary" onClick={() => applyAllestimento(defaultConfirm.a, defaultConfirm.defaults, false)}>Applica default (sovrascrivi)</button>
+      <button className="btn btn-secondary" onClick={() => applyAllestimento(defaultConfirm.a, defaultConfirm.defaults, true)}>Mantieni valori esistenti</button>
       <button className="btn btn-secondary" onClick={() => setDefaultConfirm(null)}>Annulla</button>
     </div></div>
   );
 
-  if (phase === "confirm") return (
-    <div className="overlay-bg"><div className="sheet">
-      <div className="handle" /><div className="sh-title">Sovrascrivere?</div>
-      <div style={{ background: "#22263a", border: "1px solid #f39c12", borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: "#f39c12" }}>⚠️ Campione già compilato</div>
-        <InfoPanel sample={currentConfirm} />
-        <div className="row">
-          <button className="btn btn-danger f1" onClick={() => handleConfirm(true)}>Sì, sovrascrivi</button>
-          <button className="btn btn-secondary f1" onClick={() => handleConfirm(false)}>No, mantieni</button>
-        </div>
-      </div>
-      <div style={{ color: "#7a8099", fontSize: 12, textAlign: "center" }}>{confirmQueue.length} rimanenti</div>
-    </div></div>
-  );
+  if (phase === "confirm" && currentConfirm) {
+    // Find fields that differ and are both non-empty
+    const conflictFields = Object.keys(FIELD_LABELS).filter(k => {
+      const src = d[k]; const dst = currentConfirm.data?.[k];
+      return src && dst && src !== dst;
+    });
+    // Fields that will always be written (dst empty)
+    const autoFields = Object.keys(FIELD_LABELS).filter(k => {
+      const src = d[k]; const dst = currentConfirm.data?.[k];
+      return src && !dst;
+    });
+
+    return (
+      <FieldConfirmOverlay
+        sample={currentConfirm}
+        conflictFields={conflictFields}
+        autoFields={autoFields}
+        sourceData={d}
+        fieldLabels={FIELD_LABELS}
+        remaining={confirmQueue.length}
+        onConfirm={handleFieldConfirm}
+        onSkip={() => {
+          const next = confirmQueue.slice(1);
+          if (next.length) { setConfirmQueue(next); setCurrentConfirm(next[0]); } else onClose();
+        }}
+      />
+    );
+  }
 
   if (phase === "propagate") return (
     <div className="overlay-bg" onClick={e => e.target === e.currentTarget && onClose()}><div className="sheet">
@@ -972,7 +1070,7 @@ export default function App() {
               <div className="sample-list">
                 {samples.map(s => (
                   <div key={s.id} style={{ display: "flex", alignItems: "stretch", gap: 8 }}>
-                    {/* Delete button — left side, always visible */}
+                    {/* Delete button — left */}
                     <div
                       onClick={() => { if (window.confirm(`Eliminare ${s.code || "questo campione"}?`)) handleDelete(s.id); }}
                       style={{
@@ -981,6 +1079,24 @@ export default function App() {
                         cursor: "pointer", fontSize: 18, WebkitUserSelect: "none", userSelect: "none",
                       }}>
                       🗑
+                    </div>
+                    {/* Shelf checkbox */}
+                    <div
+                      onClick={() => setTaken(prev => { const n = new Set(prev); n.has(s.id) ? n.delete(s.id) : n.add(s.id); return n; })}
+                      style={{
+                        width: 44, borderRadius: 12, display: "flex", flexDirection: "column",
+                        alignItems: "center", justifyContent: "center", gap: 3, cursor: "pointer",
+                        background: taken.has(s.id) ? "#1a4a30" : "#22263a",
+                        border: `1px solid ${taken.has(s.id) ? "#2ecc71" : "#2e3350"}`,
+                        flexShrink: 0, WebkitUserSelect: "none", userSelect: "none",
+                        transition: "all 0.15s",
+                      }}>
+                      <div style={{ fontSize: taken.has(s.id) ? 18 : 16, lineHeight: 1 }}>
+                        {taken.has(s.id) ? "✓" : "○"}
+                      </div>
+                      <div style={{ fontSize: 8, color: taken.has(s.id) ? "#2ecc71" : "#7a8099", textAlign: "center", lineHeight: 1.2 }}>
+                        Scaffale
+                      </div>
                     </div>
                     {/* Main card */}
                     <div className={`sample-card ${isDataFilled(s.data) ? "filled" : ""}`}
@@ -992,24 +1108,6 @@ export default function App() {
                         {isDataFilled(s.data) && <span className="badge badge-ok" style={{ marginLeft: "auto" }}>✓</span>}
                       </div>
                       <div className="s-text">{s.tipologia_prova || s.rawText}</div>
-                    </div>
-                    {/* Shelf checkbox */}
-                    <div
-                      onClick={() => setTaken(prev => { const n = new Set(prev); n.has(s.id) ? n.delete(s.id) : n.add(s.id); return n; })}
-                      style={{
-                        width: 52, borderRadius: 12, display: "flex", flexDirection: "column",
-                        alignItems: "center", justifyContent: "center", gap: 3, cursor: "pointer",
-                        background: taken.has(s.id) ? "#1a4a30" : "#22263a",
-                        border: `1px solid ${taken.has(s.id) ? "#2ecc71" : "#2e3350"}`,
-                        flexShrink: 0, WebkitUserSelect: "none", userSelect: "none",
-                        transition: "all 0.15s",
-                      }}>
-                      <div style={{ fontSize: taken.has(s.id) ? 20 : 18, lineHeight: 1 }}>
-                        {taken.has(s.id) ? "✓" : "○"}
-                      </div>
-                      <div style={{ fontSize: 8, color: taken.has(s.id) ? "#2ecc71" : "#7a8099", textAlign: "center", lineHeight: 1.2 }}>
-                        Scaffale
-                      </div>
                     </div>
                   </div>
                 ))}
