@@ -120,36 +120,24 @@ const css = `
 
 // ── constants ─────────────────────────────────────────────────────────────────
 const ALLESTIMENTI = [
-  "Immersione (spessore <0,5 mm)
-(1 dm^2 in 100 ml)",
-  "Immersione (spessore ≥ 0,5 mm)
-(1 dm^2 in 100 ml)",
+  "Immersione spessore <0,5mm (1dm2 in 100ml)",
+  "Immersione spessore >=0,5mm (1dm2 in 100ml)",
   "Riempimento <500ML",
-  "Riempimento ≥ 500ML",
-  "Riempimento
-(superficie non calcolabile)",
-  "Cella
-(0,5 dm^2 in 50 ml)",
-  "Cella
-(1 dm^2 in 100 ml)",
-  "Cella
-(2 dm^2 in 200 ml)",
-  "Tasca
-(2 dm^2 in 100 ml)",
-  "Single-Side (per Sim. E: MPPO)",
+  "Riempimento >=500ML",
+  "Riempimento (sup. non calcolabile)",
+  "Cella (0,5dm2 in 50ml)",
+  "Cella (1dm2 in 100ml)",
+  "Cella (2dm2 in 200ml)",
+  "Tasca (2dm2 in 100ml)",
+  "Single-Side (Sim. E: MPPO)",
 ];
 
 const STUFE = [
-  "C.I. 29 
-(5 - 40 °C)",
-  "C.I. 7 
-(40 - 70 °C)",
-  "C.I. 75_B 
-(40 - 70  °C)",
-  "C.I. 36 
-(60 - 225°C)",
-  "C.I. 8 
-(60 - 225 °C)",
+  "C.I. 29 (5-40 C)",
+  "C.I. 7 (40-70 C)",
+  "C.I. 75_B (40-70 C)",
+  "C.I. 36 (60-225 C)",
+  "C.I. 8 (60-225 C)",
 ];
 // Unit derived from allestimento label
 function getUnit(a) { if (!a) return ""; if (a.includes("Vassoio")) return "g"; return "ml"; }
