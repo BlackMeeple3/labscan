@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { createWorker } from "tesseract.js";
 import { supabase, SUPABASE_CONFIGURED, TEAM_USERS, getAvatarUrl } from "./supabase.js";
 
 const C = {
@@ -384,29 +383,31 @@ function buildReportText(samples, userName) {
   return lines.join("\n");
 }
 
-function SummaryScreen({ samples, imagePreview, userName }) {
+function SummaryScreen({ samples, userName }) {
   const [copyDone, setCopyDone] = useState(false);
   const reportText = buildReportText(samples, userName);
   function share() {
     if (navigator.share) { navigator.share({ title: "LAB·SCAN Rapporto", text: reportText }).catch(() => {}); }
     else copyText();
   }
-  function copyText() {
-    const el = document.createElement("textarea");
-    el.value = reportText; el.setAttribute("readonly", "");
-    el.style.cssText = "position:absolute;left:-9999px;top:0;";
-    document.body.appendChild(el);
-    if (/ipad|iphone/i.test(navigator.userAgent)) {
-      const range = document.createRange(); range.selectNodeContents(el);
-      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range); el.setSelectionRange(0, 999999);
-    } else el.select();
-    try { document.execCommand("copy"); setCopyDone(true); setTimeout(() => setCopyDone(false), 2500); } catch (_) {}
-    document.body.removeChild(el);
+  async function copyText() {
+    try {
+      await navigator.clipboard.writeText(reportText);
+      setCopyDone(true); setTimeout(() => setCopyDone(false), 2500);
+    } catch (_) {
+      const el = document.createElement("textarea");
+      el.value = reportText; el.setAttribute("readonly", "");
+      el.style.cssText = "position:absolute;left:-9999px;top:0;font-size:16px;";
+      document.body.appendChild(el);
+      el.focus(); el.select();
+      el.setSelectionRange(0, 99999);
+      try { document.execCommand("copy"); setCopyDone(true); setTimeout(() => setCopyDone(false), 2500); } catch (_) {}
+      document.body.removeChild(el);
+    }
   }
   const Empty = () => <span className="sum-empty">—</span>;
   return (
     <div className="screen">
-      {imagePreview && <div style={{ height: 70, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}><img src={imagePreview} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.7 }} /></div>}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div className="sec-title">{samples.filter(s => isDataFilled(s.data)).length}/{samples.length} compilati</div>
         <div style={{ display: "flex", gap: 6 }}>
@@ -428,7 +429,7 @@ function SummaryScreen({ samples, imagePreview, userName }) {
               {d.grammatura && <div className="sum-row"><span className="sum-key">Grammatura</span><span className="sum-val">{d.grammatura} g/dm²</span></div>}
               {d.tipo_campione && <div className="sum-row"><span className="sum-key">Tipo campione</span><span className="sum-val">{d.tipo_campione}</span></div>}
               {d.allestimento && <div className="sum-row"><span className="sum-key">Allestimento</span><span className="sum-val" style={{ fontSize: 11 }}>{d.allestimento}</span></div>}
-              <div className="sum-row"><span className="sum-key">Pesata</span><span className="sum-val">{d.pesata ? `${d.pesata} g` : <Empty />}</span></div>
+
               {d.volume && <div className="sum-row"><span className="sum-key">Volume/Peso</span><span className="sum-val">{d.volume} ml/g</span></div>}
               <div className="sum-row"><span className="sum-key">Superficie</span><span className="sum-val">{d.superficie ? `${d.superficie} dm²` : <Empty />}</span></div>
               <div className="sum-row"><span className="sum-key">N° articoli</span><span className="sum-val">{d.articoli || <Empty />}</span></div>
@@ -451,7 +452,6 @@ function ManualCodeOverlay({ onConfirm, onClose, currentUser }) {
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
-  const fileRef = useRef();
   const inputRef = useRef();
 
   useEffect(() => {
@@ -786,23 +786,23 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
 
         {/* N° Articoli */}
         <div><div className="field-label">N° Articoli</div><NumInput value={d.articoli} onChange={v => set("articoli", v)} step={1} unit="pz" /></div>
+
+        {/* Stufa — dentro MS */}
+        <div>
+          <div className="field-label">Stufa</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {STUFE.map(s => (
+              <div key={s}
+                style={{ padding: "11px 14px", borderRadius: 10, border: `1px solid ${d.stufa === s ? "#4f8ef7" : "#2e3350"}`, background: d.stufa === s ? "#2a4a8a" : "#22263a", color: d.stufa === s ? "#4f8ef7" : "#7a8099", fontSize: 13, cursor: "pointer", fontWeight: d.stufa === s ? 700 : 500, WebkitUserSelect: "none", userSelect: "none" }}
+                onClick={() => set("stufa", d.stufa === s ? null : s)}>
+                {s}
+              </div>
+            ))}
+          </div>
+        </div>
       </>}
 
       <div className="divider" />
-
-      {/* Stufa — sempre visibile */}
-      <div>
-        <div className="field-label">Stufa</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {STUFE.map(s => (
-            <div key={s}
-              style={{ padding: "11px 14px", borderRadius: 10, border: `1px solid ${d.stufa === s ? "#4f8ef7" : "#2e3350"}`, background: d.stufa === s ? "#2a4a8a" : "#22263a", color: d.stufa === s ? "#4f8ef7" : "#7a8099", fontSize: 13, cursor: "pointer", fontWeight: d.stufa === s ? 700 : 500, WebkitUserSelect: "none", userSelect: "none" }}
-              onClick={() => set("stufa", d.stufa === s ? null : s)}>
-              {s}
-            </div>
-          ))}
-        </div>
-      </div>
 
       {/* Inizio contatto */}
       <div>
@@ -878,17 +878,12 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [appReady, setAppReady] = useState(false);
   const [screen, setScreen] = useState("home");
-  const [imagePreview, setImagePreview] = useState(null);
-  const [rawSamples, setRawSamples] = useState([]);
   const [samples, setSamples] = useState([]);
   const [activeSample, setActiveSample] = useState(null);
   const [showManualCode, setShowManualCode] = useState(false);
-  const [ocrProgress, setOcrProgress] = useState(0);
-  const [mergeModal, setMergeModal] = useState(null);
   const [taken, setTaken] = useState(new Set()); // local-only shelf checklist
   const [toast, setToast] = useState(null);
   const fileRef = useRef();
-  const { ready: tessReady, recognize } = useTesseract();
 
   // Always start at user selection — no device tracking
   useEffect(() => { setAppReady(true); }, []);
@@ -900,53 +895,12 @@ export default function App() {
     const data = await loadUserCampioni(name);
     setSamples(data);
   }
-
-  async function handlePhoto(e) {
-    const file = e.target.files?.[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async ev => {
-      setImagePreview(ev.target.result);
-      setScreen("loading");
-      setOcrProgress(0);
-      try {
-        const interval = setInterval(() => setOcrProgress(p => Math.min(p + 8, 90)), 300);
-        const text = await recognize(file);
-        clearInterval(interval);
-        setOcrProgress(100);
-        const extracted = extractSamplesFromLines(text);
-        setRawSamples(extracted);
-        setTimeout(() => {
-          if (extracted.length > 0) setScreen("discard");
-          else { setSamples([]); setScreen("list"); }
         }, 300);
       } catch (_) { setRawSamples([]); setSamples([]); setScreen("list"); }
     };
     reader.readAsDataURL(file);
   }
-
-  function handleDiscardConfirm(kept) {
-    if (samples.length > 0) setMergeModal({ newSamples: kept });
-    else { setSamples(kept); kept.forEach(s => upsertCampione(currentUser, s)); setScreen("list"); }
   }
-
-  async function handleMerge(mode) {
-    const { newSamples } = mergeModal;
-    let final;
-    if (mode === "add") {
-      const existing = new Set(samples.map(s => s.code + s.rawText));
-      const toAdd = newSamples.filter(s => !existing.has(s.code + s.rawText));
-      final = [...samples, ...toAdd];
-      showToast(`${toAdd.length} campioni aggiunti`);
-    } else {
-      final = newSamples;
-      showToast("Lista sostituita");
-    }
-    setSamples(final);
-    final.forEach(s => upsertCampione(currentUser, s));
-    setMergeModal(null);
-    setScreen("list");
-  }
-
   async function handleSave(updates) {
     setSamples(prev => {
       const m = new Map(updates.map(u => [u.id, u.data]));
@@ -1000,14 +954,11 @@ export default function App() {
               <img src={getAvatarUrl(currentUser)} alt={currentUser} style={{ width: "100%", height: "100%", objectFit: "cover" }}
                 onError={e => { e.target.style.display = "none"; e.target.parentNode.innerHTML = `<span style="font-size:13px;color:#4f8ef7;font-weight:700">${currentUser[0]}</span>`; }} />
             </div>
-            {screen === "photo" && <button className="btn-sm" onClick={() => setScreen(samples.length > 0 ? "list" : "home")}>← Indietro</button>}
             {screen === "list" && <>
               <span style={{ fontSize: 11, color: "#7a8099", fontFamily: "'JetBrains Mono'" }}>{filled}/{samples.length}</span>
               {samples.length > 0 && <button className="btn-sm" onClick={() => setScreen("summary")}>📋 Riepilogo</button>}
             </>}
             {screen === "summary" && <button className="btn-sm" onClick={() => setScreen("list")}>← Lista</button>}
-            {screen === "discard" && <button className="btn-sm" onClick={() => setScreen("photo")}>← Foto</button>}
-            {screen === "loading" && <button className="btn-sm" onClick={() => setScreen(samples.length > 0 ? "list" : "photo")}>← Annulla</button>}
           </div>
         </div>
 
@@ -1018,7 +969,7 @@ export default function App() {
               <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: "#4f8ef7" }}>Ciao, {currentUser}</div>
               <div style={{ fontSize: 13, color: "#7a8099", marginTop: 6 }}>Cosa vuoi fare?</div>
             </div>
-            <button className="btn btn-primary" onClick={() => setScreen("photo")}>📷 Nuova foto / sessione</button>
+
             {samples.length > 0 && (
               <button className="btn btn-secondary" onClick={() => setScreen("list")}>
                 📋 Continua — {samples.length} campioni ({filled} compilati)
@@ -1030,36 +981,9 @@ export default function App() {
               setScreen("list");
             }}>📅 Inserimenti di oggi</button>
             <button className="btn btn-secondary" onClick={() => { setSamples([]); setScreen("list"); }}>+ Sessione vuota manuale</button>
-            {!tessReady && <div style={{ fontSize: 12, color: "#7a8099", textAlign: "center" }}>⏳ Caricamento motore OCR…</div>}
           </div>
         )}
 
-        {screen === "photo" && (
-          <div className="screen">
-            {!tessReady && <div style={{ fontSize: 12, color: "#f39c12", textAlign: "center", padding: "8px 12px", background: "#22263a", borderRadius: 8 }}>⏳ Caricamento motore OCR…</div>}
-            <div style={{ fontSize: 14, color: "#7a8099", lineHeight: 1.6 }}>Fotografa il documento. Ogni riga = un campione.</div>
-            <div className="photo-zone" onClick={() => tessReady && fileRef.current?.click()}>
-              {imagePreview && <img src={imagePreview} alt="" />}
-              <div className="photo-zone-overlay">
-                <div style={{ fontSize: 36 }}>{tessReady ? "📷" : "⏳"}</div>
-                <div style={{ fontSize: 13, color: "#7a8099" }}>{tessReady ? "Tocca per fotografare" : "Caricamento OCR…"}</div>
-              </div>
-            </div>
-            <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handlePhoto} />
-            <button className="btn btn-primary" disabled={!tessReady} onClick={() => fileRef.current?.click()}>📷 Scatta / Carica foto</button>
-          </div>
-        )}
-
-        {screen === "loading" && (
-          <div className="screen"><div className="loading">
-            <div className="spinner" />
-            <div style={{ fontSize: 14, color: "#7a8099" }}>Analisi OCR in corso…</div>
-            <div className="progress-bar"><div className="progress-fill" style={{ width: `${ocrProgress}%` }} /></div>
-            <div style={{ fontSize: 12, color: "#7a8099" }}>{ocrProgress}%</div>
-          </div></div>
-        )}
-
-        {screen === "discard" && <DiscardScreen samples={rawSamples} onConfirm={handleDiscardConfirm} />}
 
         {screen === "list" && (
           <div className="screen">
@@ -1127,21 +1051,10 @@ export default function App() {
               </div>
             )}
             <button className="btn btn-secondary" onClick={() => setShowManualCode(true)}>+ Aggiungi campione manuale</button>
-            <button className="fab" onClick={() => setScreen("photo")}>📷</button>
           </div>
         )}
 
-        {screen === "summary" && <SummaryScreen samples={samples} imagePreview={imagePreview} userName={currentUser} />}
-
-        {mergeModal && (
-          <div className="overlay-bg"><div className="sheet">
-            <div className="handle" />
-            <div className="sh-title">Nuovi campioni trovati</div>
-            <div style={{ fontSize: 13, color: "#7a8099", lineHeight: 1.6 }}>
-              Hai già <strong style={{ color: "#e8eaf0" }}>{samples.length} campioni</strong> in lista.<br />
-              Vuoi aggiungere i <strong style={{ color: "#4f8ef7" }}>{mergeModal.newSamples.length} nuovi</strong> o sostituire tutto?
-            </div>
-            <button className="btn btn-primary" onClick={() => handleMerge("add")}>➕ Aggiungi ai campioni esistenti</button>
+        {screen === "summary" && <SummaryScreen samples={samples} userName={currentUser} />}>➕ Aggiungi ai campioni esistenti</button>
             <button className="btn btn-danger" onClick={() => handleMerge("replace")}>🔄 Sostituisci tutto</button>
             <button className="btn btn-secondary" onClick={() => { setMergeModal(null); setScreen("list"); }}>Annulla</button>
           </div></div>
