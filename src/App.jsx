@@ -435,94 +435,124 @@ function SummaryScreen({ samples, imagePreview, userName }) {
   );
 }
 
-function ManualCodeOverlay({ onConfirm, onClose, recognize }) {
+function ManualCodeOverlay({ onConfirm, onClose, currentUser }) {
   const [digits, setDigits] = useState("");
-  const [infoTab, setInfoTab] = useState(null);
-  const [extractedText, setExtractedText] = useState("");
-  const [pickedWords, setPickedWords] = useState([]);
   const [voiceNote, setVoiceNote] = useState("");
-  const [ocrLoading, setOcrLoading] = useState(false);
-  const [listening, setListening] = useState(false);
-  const recogRef = useRef(null);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [uploading, setUploading] = useState(false);
   const fileRef = useRef();
+
   const year = new Date().getFullYear().toString().slice(-2);
   const trimmed = digits.replace(/\D/g, "").slice(0, 5);
   const preview = trimmed ? padCode(trimmed) : `${year}LD_____`;
   const isReady = trimmed.length > 0;
 
-  async function handleInfoPhoto(e) {
+  function handlePhotoSelect(e) {
     const file = e.target.files?.[0]; if (!file) return;
-    setOcrLoading(true);
-    try { const text = await recognize(file); setExtractedText(text.trim()); setPickedWords([]); }
-    catch (_) { setExtractedText("Errore OCR"); }
-    setOcrLoading(false);
+    // Resize to low resolution before upload
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = ev => {
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const maxW = 800;
+        const scale = Math.min(1, maxW / img.width);
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(blob => {
+          setPhotoFile(new File([blob], file.name, { type: "image/jpeg" }));
+          setPhotoPreview(canvas.toDataURL("image/jpeg", 0.7));
+        }, "image/jpeg", 0.7);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
   }
-  function toggleWord(w) { setPickedWords(prev => prev.includes(w) ? prev.filter(x => x !== w) : [...prev, w]); }
-  function toggleVoice() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { alert("Usa il microfono della tastiera iOS."); return; }
-    if (listening) { recogRef.current?.abort(); recogRef.current = null; setListening(false); return; }
-    const r = new SR(); r.lang = "it-IT"; r.continuous = false; r.interimResults = false;
-    r.onstart = () => setListening(true);
-    r.onresult = e => { const t = e.results[0]?.[0]?.transcript || ""; setVoiceNote(v => v ? v + " " + t : t); };
-    r.onerror = () => setListening(false); r.onend = () => { setListening(false); recogRef.current = null; };
-    try { r.start(); recogRef.current = r; } catch(e) { setListening(false); }
+
+  async function handleConfirm() {
+    if (!isReady) return;
+    const code = padCode(trimmed);
+    const sampleId = crypto.randomUUID();
+    let attachmentUrl = null;
+
+    if (photoFile && SUPABASE_CONFIGURED && supabase) {
+      setUploading(true);
+      try {
+        const ext = "jpg";
+        const path = `${currentUser}/${code}_${sampleId}.${ext}`;
+        const { error } = await supabase.storage.from("allegati").upload(path, photoFile, { contentType: "image/jpeg", upsert: true });
+        if (!error) {
+          const { data } = supabase.storage.from("allegati").getPublicUrl(path);
+          attachmentUrl = data.publicUrl;
+        }
+      } catch (_) {}
+      setUploading(false);
+    }
+
+    const note = voiceNote || "";
+    const rawText = [code, note, attachmentUrl ? "📎 foto allegata" : ""].filter(Boolean).join(" — ");
+    onConfirm({ id: sampleId, code, rawText, attachmentUrl, note });
   }
-  const selectedInfo = pickedWords.length ? pickedWords.join(" ") : voiceNote;
+
   return (
     <div className="overlay-bg" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="sheet">
         <div className="handle" />
         <div className="sh-title">Aggiungi campione</div>
+
+        {/* Codice */}
         <div>
           <div className="field-label">Cifre del codice</div>
           <div className="code-preview">{preview}</div>
-          <input className="code-input-big" type="number" inputMode="numeric" placeholder="es. 564" value={digits} onChange={e => setDigits(e.target.value.replace(/\D/g, "").slice(0, 5))} />
-          <div style={{ fontSize: 11, color: "#7a8099", marginTop: 6, textAlign: "center" }}>Digita le cifre → si completa con zeri</div>
+          <input className="code-input-big" type="number" inputMode="numeric" placeholder="es. 564"
+            value={digits} onChange={e => setDigits(e.target.value.replace(/\D/g, "").slice(0, 5))} />
+          <div style={{ fontSize: 11, color: "#7a8099", marginTop: 6, textAlign: "center" }}>
+            Digita le cifre → si completa con zeri
+          </div>
         </div>
+
         <div className="divider" />
+
+        {/* Foto allegato */}
         <div>
-          <div className="field-label">Informazioni aggiuntive (opzionale)</div>
-          <div className="info-tabs">
-            <div className={`info-tab ${infoTab === "photo" ? "on" : ""}`} onClick={() => setInfoTab(infoTab === "photo" ? null : "photo")}>📷 Da foto</div>
-            <div className={`info-tab ${infoTab === "voice" ? "on" : ""}`} onClick={() => setInfoTab(infoTab === "voice" ? null : "voice")}>🎤 Voce</div>
+          <div className="field-label">Foto allegato (opzionale)</div>
+          <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handlePhotoSelect} />
+          {photoPreview ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <img src={photoPreview} alt="" style={{ width: "100%", maxHeight: 160, objectFit: "cover", borderRadius: 10, opacity: 0.85 }} />
+              <button className="btn-sm" onClick={() => { setPhotoFile(null); setPhotoPreview(null); }}>✕ Rimuovi foto</button>
+            </div>
+          ) : (
+            <button className="btn btn-secondary" onClick={() => fileRef.current?.click()}>
+              📷 Scatta / carica foto
+            </button>
+          )}
+          <div style={{ fontSize: 11, color: "#7a8099", marginTop: 6 }}>
+            Salvata in bassa risoluzione nel bucket allegati
           </div>
         </div>
-        {infoTab === "photo" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handleInfoPhoto} />
-            <button className="btn btn-secondary" onClick={() => fileRef.current?.click()}>📷 Scatta / carica foto</button>
-            {ocrLoading && <div style={{ color: "#7a8099", fontSize: 13, textAlign: "center" }}>Analisi OCR…</div>}
-            {extractedText && !ocrLoading && <>
-              <div style={{ fontSize: 11, color: "#7a8099" }}>Tocca le parole da associare:</div>
-              <div className="sel-text-wrap">{extractedText.split(/(\s+)/).map((token, i) => {
-                if (/^\s+$/.test(token)) return <span key={i}>{token}</span>;
-                return <span key={i} className={`word ${pickedWords.includes(token) ? "picked" : ""}`} onClick={() => toggleWord(token)}>{token}</span>;
-              })}</div>
-              {pickedWords.length > 0 && <div style={{ fontSize: 12, color: "#4f8ef7" }}>✓ {pickedWords.join(" ")}</div>}
-            </>}
-          </div>
-        )}
-        {infoTab === "voice" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <div className="mic-row">
-              <button className={`mic-btn ${listening ? "mic-rec" : "mic-idle"}`} onClick={toggleVoice}>{listening ? "⏹" : "🎤"}</button>
-              <span style={{ fontSize: 12, color: "#7a8099" }}>{listening ? "In ascolto…" : "Oppure scrivi sotto"}</span>
-            </div>
-            <textarea rows={2} value={voiceNote} onChange={e => setVoiceNote(e.target.value)} placeholder="Nota sul campione…" />
-          </div>
-        )}
-        {selectedInfo && <div style={{ fontSize: 12, background: "#22263a", borderRadius: 8, padding: "8px 12px", color: "#e8eaf0", fontStyle: "italic" }}>📎 {selectedInfo}</div>}
+
+        {/* Nota testuale */}
+        <div>
+          <div className="field-label">Nota (opzionale)</div>
+          <textarea rows={2} value={voiceNote} onChange={e => setVoiceNote(e.target.value)}
+            placeholder="Note sul campione… (usa 🎤 sulla tastiera)" />
+        </div>
+
         <div className="row">
           <button className="btn btn-secondary" style={{ width: 56 }} onClick={onClose}>✕</button>
-          <button className="btn btn-primary f1" disabled={!isReady} onClick={() => { const code = padCode(trimmed); onConfirm({ code, rawText: selectedInfo ? `${code} — ${selectedInfo}` : code }); }}>✓ Aggiungi {isReady ? preview : ""}</button>
+          <button className="btn btn-primary f1" disabled={!isReady || uploading} onClick={handleConfirm}>
+            {uploading ? "Caricamento…" : `✓ Aggiungi ${isReady ? preview : ""}`}
+          </button>
         </div>
       </div>
     </div>
   );
 }
 
-function CompileOverlay({ sample, onSave, onClose, allSamples }) {
+function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
   const [d, setD] = useState(() => sample.data ? { ...sample.data } : emptyData());
   const [phase, setPhase] = useState("form");
   const [selected, setSelected] = useState([]);
@@ -718,6 +748,10 @@ function CompileOverlay({ sample, onSave, onClose, allSamples }) {
       <div className="divider" />
       <div className="row">
         <button className="btn btn-secondary" style={{ width: 56 }} onClick={onClose}>✕</button>
+        <button className="btn btn-danger" style={{ width: 56 }}
+          onClick={() => { if (window.confirm("Eliminare questo campione?")) onDelete(sample.id); }}>
+          🗑
+        </button>
         <button className="btn btn-success f1" onClick={saveAndPropagate}>✓ Salva</button>
       </div>
     </div></div>
@@ -768,6 +802,7 @@ export default function App() {
   const [showManualCode, setShowManualCode] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
   const [mergeModal, setMergeModal] = useState(null);
+  const [taken, setTaken] = useState(new Set()); // local-only shelf checklist
   const [toast, setToast] = useState(null);
   const fileRef = useRef();
   const { ready: tessReady, recognize } = useTesseract();
@@ -841,6 +876,16 @@ export default function App() {
       return next;
     });
     showToast("Salvato ✓");
+  }
+
+  async function handleDelete(id) {
+    setSamples(prev => prev.filter(s => s.id !== id));
+    setTaken(prev => { const n = new Set(prev); n.delete(id); return n; });
+    setActiveSample(null);
+    if (SUPABASE_CONFIGURED && supabase) {
+      try { await supabase.from("campioni").delete().eq("id", id); } catch (_) {}
+    }
+    showToast("Campione eliminato");
   }
 
   const filled = samples.filter(s => isDataFilled(s.data)).length;
@@ -941,16 +986,44 @@ export default function App() {
               </div>
             )}
             {samples.length > 0 ? <>
-              <div className="sec-title">{samples.length} campioni</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div className="sec-title">{samples.length} campioni</div>
+                <div style={{ fontSize: 11, color: taken.size > 0 ? "#2ecc71" : "#7a8099", fontFamily: "'JetBrains Mono'" }}>
+                  📦 Scaffale: {taken.size}/{samples.length}
+                </div>
+              </div>
               <div className="sample-list">
                 {samples.map(s => (
-                  <div key={s.id} className={`sample-card ${isDataFilled(s.data) ? "filled" : ""}`} onClick={() => setActiveSample(s)}>
-                    <div className="s-code">
-                      <div className={`s-dot ${isDataFilled(s.data) ? "on" : ""}`} />
-                      {s.code || <span style={{ color: "#f39c12" }}>⚠ Codice non trovato</span>}
-                      {isDataFilled(s.data) && <span className="badge badge-ok" style={{ marginLeft: "auto" }}>✓</span>}
+                  <div key={s.id} style={{ display: "flex", alignItems: "stretch", gap: 8 }}>
+                    {/* Main card */}
+                    <div className={`sample-card ${isDataFilled(s.data) ? "filled" : ""}`}
+                      style={{ flex: 1 }}
+                      onClick={() => setActiveSample(s)}>
+                      <div className="s-code">
+                        <div className={`s-dot ${isDataFilled(s.data) ? "on" : ""}`} />
+                        {s.code || <span style={{ color: "#f39c12" }}>⚠ Codice non trovato</span>}
+                        {isDataFilled(s.data) && <span className="badge badge-ok" style={{ marginLeft: "auto" }}>✓</span>}
+                      </div>
+                      <div className="s-text">{s.tipologia_prova || s.rawText}</div>
                     </div>
-                    <div className="s-text">{s.tipologia_prova || s.rawText}</div>
+                    {/* Shelf checkbox */}
+                    <div
+                      onClick={() => setTaken(prev => { const n = new Set(prev); n.has(s.id) ? n.delete(s.id) : n.add(s.id); return n; })}
+                      style={{
+                        width: 52, borderRadius: 12, display: "flex", flexDirection: "column",
+                        alignItems: "center", justifyContent: "center", gap: 3, cursor: "pointer",
+                        background: taken.has(s.id) ? "#1a4a30" : "#22263a",
+                        border: `1px solid ${taken.has(s.id) ? "#2ecc71" : "#2e3350"}`,
+                        flexShrink: 0, WebkitUserSelect: "none", userSelect: "none",
+                        transition: "all 0.15s",
+                      }}>
+                      <div style={{ fontSize: taken.has(s.id) ? 20 : 18, lineHeight: 1 }}>
+                        {taken.has(s.id) ? "✓" : "○"}
+                      </div>
+                      <div style={{ fontSize: 8, color: taken.has(s.id) ? "#2ecc71" : "#7a8099", textAlign: "center", lineHeight: 1.2 }}>
+                        Scaffale
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -982,9 +1055,10 @@ export default function App() {
         )}
 
         {showManualCode && (
-          <ManualCodeOverlay recognize={recognize}
-            onConfirm={({ code, rawText }) => {
-              const newS = { id: crypto.randomUUID(), code, rawText, data: null };
+          <ManualCodeOverlay
+            currentUser={currentUser}
+            onConfirm={({ id, code, rawText, attachmentUrl, note }) => {
+              const newS = { id: id || crypto.randomUUID(), code, rawText, attachmentUrl, data: note ? { ...emptyData(), note } : null };
               setSamples(prev => [...prev, newS]);
               upsertCampione(currentUser, newS);
               setShowManualCode(false);
@@ -995,7 +1069,7 @@ export default function App() {
         )}
 
         {activeSample && (
-          <CompileOverlay sample={activeSample} allSamples={samples} onSave={handleSave} onClose={() => setActiveSample(null)} />
+          <CompileOverlay sample={activeSample} allSamples={samples} onSave={handleSave} onDelete={handleDelete} onClose={() => setActiveSample(null)} />
         )}
 
         {toast && <div className="toast">{toast}</div>}
