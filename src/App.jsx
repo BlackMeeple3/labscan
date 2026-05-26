@@ -172,7 +172,7 @@ function extractSamplesFromLines(text) {
       return { id: crypto.randomUUID(), code: m ? m[1].toUpperCase() : null, rawText: line, data: null };
     });
 }
-function emptyData() { return { pesata: "", superficie: "", allestimento: null, volume: "", articoli: "", stufa: null, inizio_contatto: "", ot: "", note: "" }; }
+function emptyData() { return { pesata: "", pesata2: "", pesata3: "", grammatura: "", tipo_campione: null, superficie: "", allestimento: null, volume: "", articoli: "", stufa: null, inizio_contatto: "", ot: "", note: "" }; }
 function isDataFilled(d) { return d && (d.pesata || d.superficie || d.allestimento || d.stufa || d.articoli); }
 function padCode(digits) {
   const year = new Date().getFullYear().toString().slice(-2);
@@ -213,14 +213,14 @@ async function loadUserCampioni(userName, onlyToday = false) {
     if (!onlyToday && data && data.length === 50) {
       alert("Attenzione: sono stati caricati i 50 campioni più recenti. Potrebbero essercene altri nel database.");
     }
-    return (data || []).map(r => ({ id: r.id, code: r.codice_id, rawText: r.descrizione_campione, richiedente: r.richiedente, codice_analisi: r.codice_analisi, valore: r.valore, nota_param: r.nota_param, tipologia_prova: r.tipologia_prova, tipologia_analisi: r.tipologia_analisi, data: { pesata: r.pesata || "", superficie: r.superficie || "", allestimento: r.modalita_allestimento || null, volume: r.volume_peso || "", articoli: r.numero_articoli || "", stufa: r.stufa || null, inizio_contatto: r.inizio_contatto || "", ot: r.ot || "", note: r.note_oggetti || "" } }));
+    return (data || []).map(r => ({ id: r.id, code: r.codice_id, rawText: r.descrizione_campione, richiedente: r.richiedente, codice_analisi: r.codice_analisi, valore: r.valore, nota_param: r.nota_param, tipologia_prova: r.tipologia_prova, tipologia_analisi: r.tipologia_analisi, data: { pesata: r.pesata || "", pesata2: r.pesata2 || "", pesata3: r.pesata3 || "", grammatura: r.grammatura || "", tipo_campione: r.tipo_campione || null, superficie: r.superficie || "", allestimento: r.modalita_allestimento || null, volume: r.volume_peso || "", articoli: r.numero_articoli || "", stufa: r.stufa || null, inizio_contatto: r.inizio_contatto || "", ot: r.ot || "", note: r.note_oggetti || "" } }));
   } catch (_) { return []; }
 }
 
 async function upsertCampione(userName, sample) {
   if (!SUPABASE_CONFIGURED) return;
   try {
-    const row = { id: sample.id, user_name: userName, codice_id: sample.code, richiedente: sample.richiedente || null, descrizione_campione: sample.rawText, codice_analisi: sample.codice_analisi || null, valore: sample.valore || null, nota_param: sample.nota_param || null, tipologia_prova: sample.tipologia_prova || null, tipologia_analisi: sample.tipologia_analisi || null, modalita_allestimento: sample.data?.allestimento || null, volume_peso: sample.data?.volume || null, superficie: sample.data?.superficie || null, stufa: sample.data?.stufa || null, note_oggetti: sample.data?.note || null, inizio_contatto: sample.data?.inizio_contatto || null, numero_articoli: sample.data?.articoli || null, ot: sample.data?.ot || null };
+    const row = { id: sample.id, user_name: userName, codice_id: sample.code, richiedente: sample.richiedente || null, descrizione_campione: sample.rawText, codice_analisi: sample.codice_analisi || null, valore: sample.valore || null, nota_param: sample.nota_param || null, tipologia_prova: sample.tipologia_prova || null, tipologia_analisi: sample.tipologia_analisi || null, modalita_allestimento: sample.data?.allestimento || null, volume_peso: sample.data?.volume || null, superficie: sample.data?.superficie || null, stufa: sample.data?.stufa || null, note_oggetti: sample.data?.note || null, inizio_contatto: sample.data?.inizio_contatto || null, numero_articoli: sample.data?.articoli || null, ot: sample.data?.ot || null, pesata: sample.data?.pesata || null, pesata2: sample.data?.pesata2 || null, pesata3: sample.data?.pesata3 || null, grammatura: sample.data?.grammatura || null, tipo_campione: sample.data?.tipo_campione || null };
     await supabase.from("campioni").upsert(row, { onConflict: "id" });
   } catch (_) {}
 }
@@ -365,12 +365,16 @@ function buildReportText(samples, userName) {
     lines.push(`${i + 1}. ${s.code || "—"}`);
     lines.push(`   Info: ${s.rawText}`);
     if (d) {
+      if (d.pesata) lines.push(`   Pesata 1: ${d.pesata} g`);
+      if (d.pesata2) lines.push(`   Pesata 2: ${d.pesata2} g`);
+      if (d.pesata3) lines.push(`   Pesata 3: ${d.pesata3} g`);
+      if (d.grammatura) lines.push(`   Grammatura: ${d.grammatura} g/dm2`);
+      if (d.tipo_campione) lines.push(`   Tipo campione: ${d.tipo_campione}`);
       if (d.allestimento) lines.push(`   Allestimento: ${d.allestimento}`);
       if (d.stufa) lines.push(`   Stufa: ${d.stufa}`);
       if (d.inizio_contatto) lines.push(`   Inizio contatto: ${d.inizio_contatto}`);
       if (d.ot) lines.push(`   OT: ${d.ot}`);
-      if (d.pesata) lines.push(`   Pesata: ${d.pesata} g`);
-      if (d.volume) lines.push(`   Volume/Peso: ${d.volume} ml/g`);
+            if (d.volume) lines.push(`   Volume/Peso: ${d.volume} ml/g`);
       if (d.superficie) lines.push(`   Superficie: ${d.superficie} dm²`);
       if (d.articoli) lines.push(`   N° articoli: ${d.articoli}`);
       if (d.note) lines.push(`   Note: ${d.note}`);
@@ -418,7 +422,12 @@ function SummaryScreen({ samples, imagePreview, userName }) {
             <div className="sum-rawtext">{s.rawText}</div>
             <div className="divider" style={{ margin: "4px 0" }} />
             {d ? <>
-              <div className="sum-row"><span className="sum-key">Allestimento</span><span className="sum-val" style={{ fontSize: 11, whiteSpace: "pre-line", textAlign: "right", maxWidth: "60%" }}>{d.allestimento || <Empty />}</span></div>
+              {d.pesata && <div className="sum-row"><span className="sum-key">Pesata 1</span><span className="sum-val">{d.pesata} g</span></div>}
+              {d.pesata2 && <div className="sum-row"><span className="sum-key">Pesata 2</span><span className="sum-val">{d.pesata2} g</span></div>}
+              {d.pesata3 && <div className="sum-row"><span className="sum-key">Pesata 3</span><span className="sum-val">{d.pesata3} g</span></div>}
+              {d.grammatura && <div className="sum-row"><span className="sum-key">Grammatura</span><span className="sum-val">{d.grammatura} g/dm²</span></div>}
+              {d.tipo_campione && <div className="sum-row"><span className="sum-key">Tipo campione</span><span className="sum-val">{d.tipo_campione}</span></div>}
+              {d.allestimento && <div className="sum-row"><span className="sum-key">Allestimento</span><span className="sum-val" style={{ fontSize: 11 }}>{d.allestimento}</span></div>}
               <div className="sum-row"><span className="sum-key">Pesata</span><span className="sum-val">{d.pesata ? `${d.pesata} g` : <Empty />}</span></div>
               {d.volume && <div className="sum-row"><span className="sum-key">Volume/Peso</span><span className="sum-val">{d.volume} ml/g</span></div>}
               <div className="sum-row"><span className="sum-key">Superficie</span><span className="sum-val">{d.superficie ? `${d.superficie} dm²` : <Empty />}</span></div>
@@ -579,19 +588,33 @@ function ManualCodeOverlay({ onConfirm, onClose, currentUser }) {
   );
 }
 
+// ── SectionHeader — collapsible section with eye emoji ───────────────────────
+function SectionHeader({ label, open, onToggle }) {
+  return (
+    <div onClick={onToggle} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "4px 0", WebkitUserSelect: "none", userSelect: "none" }}>
+      <span style={{ fontSize: 20 }}>{open ? "👁" : "🙈"}</span>
+      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 15, fontWeight: 700, color: open ? "#4f8ef7" : "#7a8099", letterSpacing: 1 }}>{label}</span>
+      <span style={{ fontSize: 12, color: "#7a8099", marginLeft: "auto" }}>{open ? "▼ nascondi" : "▶ mostra"}</span>
+    </div>
+  );
+}
+
 function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
-  const [d, setD] = useState(() => sample.data ? { ...sample.data } : emptyData());
+  const [d, setD] = useState(() => sample.data ? { ...emptyData(), ...sample.data } : emptyData());
   const [phase, setPhase] = useState("form");
   const [selected, setSelected] = useState([]);
   const [confirmQueue, setConfirmQueue] = useState([]);
   const [currentConfirm, setCurrentConfirm] = useState(null);
-  const [showHidden, setShowHidden] = useState(false);
-  const [defaultConfirm, setDefaultConfirm] = useState(null); // { a, defaults, existing }
+  const [defaultConfirm, setDefaultConfirm] = useState(null);
+  const [openRep, setOpenRep] = useState(false);
+
+  // QM section open by default if tipologia_analisi is QM, else MS open
+  const isQM = sample.tipologia_analisi === "QM";
+  const [openQM, setOpenQM] = useState(isQM);
+  const [openMS, setOpenMS] = useState(!isQM);
+
   const set = (k, v) => setD(prev => ({ ...prev, [k]: v }));
   const others = allSamples.filter(s => s.id !== sample.id);
-
-  const isQM = sample.tipologia_analisi === "QM";
-  const showPesata = isQM || showHidden;
 
   function handleAllestimento(a) {
     if (d.allestimento === a) { set("allestimento", null); set("volume", ""); return; }
@@ -699,38 +722,75 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
       <InfoPanel sample={sample} />
       <div className="divider" />
 
-      {/* Allestimento */}
-      <div>
-        <div className="field-label">Modalità allestimento</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {ALLESTIMENTI.map(a => (
-            <div key={a}
-              style={{ padding: "11px 14px", borderRadius: 10, border: `1px solid ${d.allestimento === a ? "#4f8ef7" : "#2e3350"}`, background: d.allestimento === a ? "#2a4a8a" : "#22263a", color: d.allestimento === a ? "#4f8ef7" : "#7a8099", fontSize: 13, cursor: "pointer", fontWeight: d.allestimento === a ? 700 : 500, WebkitUserSelect: "none", userSelect: "none" }}
-              onClick={() => handleAllestimento(a)}>
-              {a}
-            </div>
-          ))}
+      {/* ── SEZIONE QM ── */}
+      <SectionHeader label="QM" open={openQM} onToggle={() => setOpenQM(v => !v)} />
+      {openQM && <>
+        {/* Pesata 1 — 4 decimali */}
+        <div><div className="field-label">Pesata 1</div><NumPadInput value={d.pesata} onChange={v => set("pesata", v)} unit="g" decimalDigits={4} /></div>
+
+        {/* Repliche — collassabili */}
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", WebkitUserSelect: "none" }}
+            onClick={() => setOpenRep(v => !v)}>
+            <span style={{ fontSize: 13, color: "#7a8099" }}>{openRep ? "▼" : "▶"} Repliche (Pesata 2 / 3)</span>
+          </div>
+          {openRep && <>
+            <div style={{ marginTop: 10 }}><div className="field-label">Pesata 2</div><NumPadInput value={d.pesata2} onChange={v => set("pesata2", v)} unit="g" decimalDigits={4} /></div>
+            <div style={{ marginTop: 10 }}><div className="field-label">Pesata 3</div><NumPadInput value={d.pesata3} onChange={v => set("pesata3", v)} unit="g" decimalDigits={4} /></div>
+          </>}
         </div>
-        {d.allestimento && <div style={{ fontSize: 11, color: "#7a8099", marginTop: 4 }}>Tocca di nuovo per deselezionare</div>}
-      </div>
 
-      {/* Pesata — solo QM o se scoperto */}
-      {!isQM && !showHidden && (
-        <button className="btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => setShowHidden(true)}>
-          👁 Mostra campi pesata
-        </button>
-      )}
+        {/* Grammatura */}
+        <div><div className="field-label">Grammatura</div><NumPadInput value={d.grammatura} onChange={v => set("grammatura", v)} unit="g/dm²" decimalDigits={4} /></div>
 
-      {showPesata && <>
-        <div><div className="field-label">Pesata</div><NumPadInput value={d.pesata} onChange={v => set("pesata", v)} unit="g" decimalDigits={2} /></div>
-        <div><div className="field-label">Volume / Peso (ml/g)</div><NumPadInput value={d.volume} onChange={v => set("volume", v)} unit="ml/g" decimalDigits={2} /></div>
-        <div><div className="field-label">Superficie</div><NumPadInput value={d.superficie} onChange={v => set("superficie", v)} unit="dm²" decimalDigits={2} /></div>
+        {/* Tipo campione */}
+        <div>
+          <div className="field-label">Tipo campione</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {["Tappo / oggetto", "Contenitore ≥500ml", "-"].map(t => (
+              <div key={t}
+                style={{ padding: "11px 14px", borderRadius: 10, border: `1px solid ${d.tipo_campione === t ? "#4f8ef7" : "#2e3350"}`, background: d.tipo_campione === t ? "#2a4a8a" : "#22263a", color: d.tipo_campione === t ? "#4f8ef7" : "#7a8099", fontSize: 13, cursor: "pointer", fontWeight: d.tipo_campione === t ? 700 : 500, WebkitUserSelect: "none", userSelect: "none" }}
+                onClick={() => set("tipo_campione", d.tipo_campione === t ? null : t)}>
+                {t}
+              </div>
+            ))}
+          </div>
+        </div>
       </>}
 
-      {/* N° Articoli */}
-      <div><div className="field-label">N° Articoli</div><NumInput value={d.articoli} onChange={v => set("articoli", v)} step={1} unit="pz" /></div>
+      <div className="divider" />
 
-      {/* Stufa */}
+      {/* ── SEZIONE MS ── */}
+      <SectionHeader label="MS" open={openMS} onToggle={() => setOpenMS(v => !v)} />
+      {openMS && <>
+        {/* Allestimento */}
+        <div>
+          <div className="field-label">Modalità allestimento</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {ALLESTIMENTI.map(a => (
+              <div key={a}
+                style={{ padding: "11px 14px", borderRadius: 10, border: `1px solid ${d.allestimento === a ? "#4f8ef7" : "#2e3350"}`, background: d.allestimento === a ? "#2a4a8a" : "#22263a", color: d.allestimento === a ? "#4f8ef7" : "#7a8099", fontSize: 13, cursor: "pointer", fontWeight: d.allestimento === a ? 700 : 500, WebkitUserSelect: "none", userSelect: "none" }}
+                onClick={() => handleAllestimento(a)}>
+                {a}
+              </div>
+            ))}
+          </div>
+          {d.allestimento && <div style={{ fontSize: 11, color: "#7a8099", marginTop: 4 }}>Tocca di nuovo per deselezionare</div>}
+        </div>
+
+        {/* Volume/Peso */}
+        <div><div className="field-label">Volume / Peso (ml/g)</div><NumPadInput value={d.volume} onChange={v => set("volume", v)} unit="ml/g" decimalDigits={2} /></div>
+
+        {/* Superficie */}
+        <div><div className="field-label">Superficie</div><NumPadInput value={d.superficie} onChange={v => set("superficie", v)} unit="dm²" decimalDigits={2} /></div>
+
+        {/* N° Articoli */}
+        <div><div className="field-label">N° Articoli</div><NumInput value={d.articoli} onChange={v => set("articoli", v)} step={1} unit="pz" /></div>
+      </>}
+
+      <div className="divider" />
+
+      {/* Stufa — sempre visibile */}
       <div>
         <div className="field-label">Stufa</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
