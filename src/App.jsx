@@ -193,14 +193,14 @@ async function loadUserCampioni(userName, onlyToday = false) {
     if (!onlyToday && data && data.length === 50) {
       alert("Attenzione: sono stati caricati i 50 campioni più recenti. Potrebbero essercene altri nel database.");
     }
-    return (data || []).map(r => ({ id: r.id, code: r.codice_id, rawText: r.descrizione_campione, richiedente: r.richiedente, codice_analisi: r.codice_analisi, valore: r.valore, nota_param: r.nota_param, tipologia_prova: r.tipologia_prova, tipologia_analisi: r.tipologia_analisi, data: { pesata: r.pesata || "", pesata2: r.pesata2 || "", pesata3: r.pesata3 || "", grammatura: r.grammatura || "", tipo_campione: r.tipo_campione || null, superficie: r.superficie || "", allestimento: r.modalita_allestimento || null, volume: r.volume_peso || "", articoli: r.numero_articoli || "", stufa: r.stufa || null, inizio_contatto: r.inizio_contatto || "", ot: r.ot || "", note: r.note_oggetti || "" } }));
+    return (data || []).map(r => ({ id: r.id, code: r.codice_id, rawText: r.descrizione_campione, richiedente: r.richiedente, codice_analisi: r.codice_analisi, analisi: r.analisi, prep_qm: r.prep_qm, valore: r.valore, nota_param: r.nota_param, tipologia_prova: r.tipologia_prova, tipologia_analisi: r.tipologia_analisi, data: { pesata: r.pesata || "", pesata2: r.pesata2 || "", pesata3: r.pesata3 || "", grammatura: r.grammatura || "", tipo_campione: r.tipo_campione || null, superficie: r.superficie || "", allestimento: r.modalita_allestimento || null, volume: r.volume_peso || "", articoli: r.numero_articoli || "", stufa: r.stufa || null, inizio_contatto: r.inizio_contatto || "", ot: r.ot || "", note: r.note_oggetti || "" } }));
   } catch (_) { return []; }
 }
 
 async function upsertCampione(userName, sample) {
   if (!SUPABASE_CONFIGURED) return;
   try {
-    const row = { id: sample.id, user_name: userName, codice_id: sample.code, richiedente: sample.richiedente || null, descrizione_campione: sample.rawText, codice_analisi: sample.codice_analisi || null, valore: sample.valore || null, nota_param: sample.nota_param || null, tipologia_prova: sample.tipologia_prova || null, tipologia_analisi: sample.tipologia_analisi || null, modalita_allestimento: sample.data?.allestimento || null, volume_peso: sample.data?.volume || null, superficie: sample.data?.superficie || null, stufa: sample.data?.stufa || null, note_oggetti: sample.data?.note || null, inizio_contatto: sample.data?.inizio_contatto || null, numero_articoli: sample.data?.articoli || null, ot: sample.data?.ot || null, pesata: sample.data?.pesata || null, pesata2: sample.data?.pesata2 || null, pesata3: sample.data?.pesata3 || null, grammatura: sample.data?.grammatura || null, tipo_campione: sample.data?.tipo_campione || null };
+    const row = { id: sample.id, user_name: userName, codice_id: sample.code, richiedente: sample.richiedente || null, descrizione_campione: sample.rawText, codice_analisi: sample.codice_analisi || null, analisi: sample.analisi || null, prep_qm: sample.prep_qm || null, valore: sample.valore || null, nota_param: sample.nota_param || null, tipologia_prova: sample.tipologia_prova || null, tipologia_analisi: sample.tipologia_analisi || null, modalita_allestimento: sample.data?.allestimento || null, volume_peso: sample.data?.volume || null, superficie: sample.data?.superficie || null, stufa: sample.data?.stufa || null, note_oggetti: sample.data?.note || null, inizio_contatto: sample.data?.inizio_contatto || null, numero_articoli: sample.data?.articoli || null, ot: sample.data?.ot || null, pesata: sample.data?.pesata || null, pesata2: sample.data?.pesata2 || null, pesata3: sample.data?.pesata3 || null, grammatura: sample.data?.grammatura || null, tipo_campione: sample.data?.tipo_campione || null };
     await supabase.from("campioni").upsert(row, { onConflict: "id" });
   } catch (_) {}
 }
@@ -296,15 +296,28 @@ function InfoPanel({ sample }) {
     { label: "Codice", val: sample.code },
     { label: "Richiedente", val: sample.richiedente },
     { label: "Descrizione", val: sample.rawText },
-    { label: "Cod. analisi", val: sample.codice_analisi },
-    { label: "Valore", val: sample.valore },
-    { label: "Nota param.", val: sample.nota_param },
+    // Codice analisi + Analisi + Prep QM on same row
     { label: "Tipo prova", val: sample.tipologia_prova },
     { label: "Tipo analisi", val: sample.tipologia_analisi },
+    { label: "Valore", val: sample.valore },
+    { label: "Nota param.", val: sample.nota_param },
   ].filter(f => f.val && f.val !== "None" && f.val !== "");
+
+  // Build the combined analisi row
+  const codAN = sample.codice_analisi;
+  const analisi = sample.analisi;
+  const prepQM = sample.prep_qm;
+  const analisiRow = [codAN, analisi, prepQM].filter(Boolean).join(" | ");
+
   return (
     <div className="info-panel">
       <div className="info-panel-code">{sample.code || <span style={{ color: "#f39c12" }}>Codice non trovato</span>}</div>
+      {analisiRow && (
+        <div>
+          <div className="info-panel-label">Codice analisi | Analisi | Prep. QM</div>
+          <div className="info-panel-val" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>{analisiRow}</div>
+        </div>
+      )}
       {fields.slice(1).map((f, i) => (
         <div key={i}>
           <div className="info-panel-label">{f.label}</div>
