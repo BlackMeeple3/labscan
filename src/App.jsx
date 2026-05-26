@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { supabase, SUPABASE_CONFIGURED, TEAM_USERS, getAvatarUrl } from "./supabase.js";
 
 const C = {
@@ -178,25 +178,6 @@ function padCode(digits) {
   return `${year}LD${digits.padStart(5, "0")}`;
 }
 
-// ── Tesseract ─────────────────────────────────────────────────────────────────
-function useTesseract() {
-  const workerRef = useRef(null);
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const worker = await createWorker("ita+eng", 1, { logger: () => {} });
-      if (!cancelled) { workerRef.current = worker; setReady(true); }
-    })();
-    return () => { cancelled = true; workerRef.current?.terminate(); };
-  }, []);
-  const recognize = useCallback(async (imageData) => {
-    if (!workerRef.current) return "";
-    const result = await workerRef.current.recognize(imageData);
-    return result.data.text;
-  }, []);
-  return { ready, recognize };
-}
 
 // ── Supabase helpers ──────────────────────────────────────────────────────────
 async function loadUserCampioni(userName, onlyToday = false) {
@@ -883,7 +864,6 @@ export default function App() {
   const [showManualCode, setShowManualCode] = useState(false);
   const [taken, setTaken] = useState(new Set()); // local-only shelf checklist
   const [toast, setToast] = useState(null);
-  const fileRef = useRef();
 
   // Always start at user selection — no device tracking
   useEffect(() => { setAppReady(true); }, []);
@@ -895,12 +875,7 @@ export default function App() {
     const data = await loadUserCampioni(name);
     setSamples(data);
   }
-        }, 300);
-      } catch (_) { setRawSamples([]); setSamples([]); setScreen("list"); }
-    };
-    reader.readAsDataURL(file);
-  }
-  }
+
   async function handleSave(updates) {
     setSamples(prev => {
       const m = new Map(updates.map(u => [u.id, u.data]));
@@ -987,11 +962,6 @@ export default function App() {
 
         {screen === "list" && (
           <div className="screen">
-            {imagePreview && (
-              <div style={{ height: 56, borderRadius: 10, overflow: "hidden", cursor: "pointer", flexShrink: 0 }} onClick={() => setScreen("photo")}>
-                <img src={imagePreview} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.6 }} />
-              </div>
-            )}
             {samples.length > 0 ? <>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div className="sec-title">{samples.length} campioni</div>
