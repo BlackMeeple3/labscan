@@ -119,8 +119,40 @@ const css = `
 `;
 
 // ── constants ─────────────────────────────────────────────────────────────────
-const ALLESTIMENTI = ["Riempimento", "Immersione", "Cella", "Tasca", "Vassoio"];
-const ALLESTIMENTO_UNIT = { Riempimento: "ml", Immersione: "ml", Cella: "ml", Tasca: "ml", Vassoio: "g" };
+const ALLESTIMENTI = [
+  "Immersione (spessore <0,5 mm)
+(1 dm^2 in 100 ml)",
+  "Immersione (spessore ≥ 0,5 mm)
+(1 dm^2 in 100 ml)",
+  "Riempimento <500ML",
+  "Riempimento ≥ 500ML",
+  "Riempimento
+(superficie non calcolabile)",
+  "Cella
+(0,5 dm^2 in 50 ml)",
+  "Cella
+(1 dm^2 in 100 ml)",
+  "Cella
+(2 dm^2 in 200 ml)",
+  "Tasca
+(2 dm^2 in 100 ml)",
+  "Single-Side (per Sim. E: MPPO)",
+];
+
+const STUFE = [
+  "C.I. 29 
+(5 - 40 °C)",
+  "C.I. 7 
+(40 - 70 °C)",
+  "C.I. 75_B 
+(40 - 70  °C)",
+  "C.I. 36 
+(60 - 225°C)",
+  "C.I. 8 
+(60 - 225 °C)",
+];
+// Unit derived from allestimento label
+function getUnit(a) { if (!a) return ""; if (a.includes("Vassoio")) return "g"; return "ml"; }
 const PATTERN = /\b(\d{2}LD\d{5})\b/i;
 const NOISE_PATTERNS = [
   /^testo\s+(trovato|estratto)/i, /^codice\s+non\s+trovato/i,
@@ -137,8 +169,8 @@ function extractSamplesFromLines(text) {
       return { id: crypto.randomUUID(), code: m ? m[1].toUpperCase() : null, rawText: line, data: null };
     });
 }
-function emptyData() { return { pesata: "", superficie: "", allestimento: null, volume: "", articoli: "", note: "" }; }
-function isDataFilled(d) { return d && (d.pesata || d.superficie || d.allestimento || d.articoli); }
+function emptyData() { return { pesata: "", superficie: "", allestimento: null, volume: "", articoli: "", stufa: null, inizio_contatto: "", ot: "", note: "" }; }
+function isDataFilled(d) { return d && (d.pesata || d.superficie || d.allestimento || d.stufa || d.articoli); }
 function padCode(digits) {
   const year = new Date().getFullYear().toString().slice(-2);
   return `${year}LD${digits.padStart(5, "0")}`;
@@ -170,14 +202,14 @@ async function loadUserCampioni(userName) {
   try {
     const { data, error } = await supabase.from("campioni").select("*").eq("user_name", userName).order("created_at", { ascending: false });
     if (error) throw error;
-    return (data || []).map(r => ({ id: r.id, code: r.code, rawText: r.raw_text, data: { pesata: r.pesata || "", superficie: r.superficie || "", allestimento: r.allestimento || null, volume: r.volume || "", articoli: r.articoli || "", note: r.note || "" } }));
+    return (data || []).map(r => ({ id: r.id, code: r.codice_id, rawText: r.descrizione_campione, richiedente: r.richiedente, codice_analisi: r.codice_analisi, valore: r.valore, nota_param: r.nota_param, tipologia_prova: r.tipologia_prova, tipologia_analisi: r.tipologia_analisi, data: { pesata: r.pesata || "", superficie: r.superficie || "", allestimento: r.modalita_allestimento || null, volume: r.volume_peso || "", articoli: r.numero_articoli || "", stufa: r.stufa || null, inizio_contatto: r.inizio_contatto || "", ot: r.ot || "", note: r.note_oggetti || "" } }));
   } catch (_) { return []; }
 }
 
 async function upsertCampione(userName, sample) {
   if (!SUPABASE_CONFIGURED) return;
   try {
-    const row = { id: sample.id, user_name: userName, code: sample.code, raw_text: sample.rawText, pesata: sample.data?.pesata || null, superficie: sample.data?.superficie || null, allestimento: sample.data?.allestimento || null, volume: sample.data?.volume || null, articoli: sample.data?.articoli || null, note: sample.data?.note || null };
+    const row = { id: sample.id, user_name: userName, codice_id: sample.code, richiedente: sample.richiedente || null, descrizione_campione: sample.rawText, codice_analisi: sample.codice_analisi || null, valore: sample.valore || null, nota_param: sample.nota_param || null, tipologia_prova: sample.tipologia_prova || null, tipologia_analisi: sample.tipologia_analisi || null, modalita_allestimento: sample.data?.allestimento || null, volume_peso: sample.data?.volume || null, superficie: sample.data?.superficie || null, stufa: sample.data?.stufa || null, note_oggetti: sample.data?.note || null, inizio_contatto: sample.data?.inizio_contatto || null, numero_articoli: sample.data?.articoli || null, ot: sample.data?.ot || null };
     await supabase.from("campioni").upsert(row, { onConflict: "id" });
   } catch (_) {}
 }
@@ -293,14 +325,25 @@ function NotesInput({ value, onChange }) {
 }
 
 function InfoPanel({ sample }) {
-  const raw = sample.rawText || "";
-  const cols = raw.includes("\t") ? raw.split("\t") : raw.includes("|") ? raw.split("|") : null;
+  const fields = [
+    { label: "Codice", val: sample.code },
+    { label: "Richiedente", val: sample.richiedente },
+    { label: "Descrizione", val: sample.rawText },
+    { label: "Cod. analisi", val: sample.codice_analisi },
+    { label: "Valore", val: sample.valore },
+    { label: "Nota param.", val: sample.nota_param },
+    { label: "Tipo prova", val: sample.tipologia_prova },
+    { label: "Tipo analisi", val: sample.tipologia_analisi },
+  ].filter(f => f.val && f.val !== "None" && f.val !== "");
   return (
     <div className="info-panel">
       <div className="info-panel-code">{sample.code || <span style={{ color: "#f39c12" }}>Codice non trovato</span>}</div>
-      {cols ? cols.filter(c => c.trim()).map((col, i) => (
-        <div key={i}><div className="info-panel-label">Campo {i + 1}</div><div className="info-panel-val">{col.trim()}</div></div>
-      )) : <div><div className="info-panel-label">Informazioni riga</div><div className="info-panel-val">{raw}</div></div>}
+      {fields.slice(1).map((f, i) => (
+        <div key={i}>
+          <div className="info-panel-label">{f.label}</div>
+          <div className="info-panel-val">{f.val}</div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -338,7 +381,10 @@ function buildReportText(samples, userName) {
     lines.push(`${i + 1}. ${s.code || "—"}`);
     lines.push(`   Info: ${s.rawText}`);
     if (d) {
-      if (d.allestimento) lines.push(`   Allestimento: ${d.allestimento}`);
+      if (d.allestimento) lines.push(\`   Allestimento: \${d.allestimento}\`);
+      if (d.stufa) lines.push(\`   Stufa: \${d.stufa}\`);
+      if (d.inizio_contatto) lines.push(\`   Inizio contatto: \${d.inizio_contatto}\`);
+      if (d.ot) lines.push(\`   OT: \${d.ot}\`);
       if (d.pesata) lines.push(`   Pesata: ${d.pesata} g`);
       if (d.volume && d.allestimento) lines.push(`   ${d.allestimento === "Vassoio" ? "Peso" : "Volume"}: ${d.volume} ${ALLESTIMENTO_UNIT[d.allestimento]}`);
       if (d.superficie) lines.push(`   Superficie: ${d.superficie} dm²`);
@@ -388,11 +434,14 @@ function SummaryScreen({ samples, imagePreview, userName }) {
             <div className="sum-rawtext">{s.rawText}</div>
             <div className="divider" style={{ margin: "4px 0" }} />
             {d ? <>
-              <div className="sum-row"><span className="sum-key">Allestimento</span><span className="sum-val">{d.allestimento || <Empty />}</span></div>
+              <div className="sum-row"><span className="sum-key">Allestimento</span><span className="sum-val" style={{ fontSize: 11, whiteSpace: "pre-line", textAlign: "right", maxWidth: "60%" }}>{d.allestimento || <Empty />}</span></div>
               <div className="sum-row"><span className="sum-key">Pesata</span><span className="sum-val">{d.pesata ? `${d.pesata} g` : <Empty />}</span></div>
-              {d.allestimento && <div className="sum-row"><span className="sum-key">{d.allestimento === "Vassoio" ? "Peso" : "Volume"}</span><span className="sum-val">{d.volume ? `${d.volume} ${ALLESTIMENTO_UNIT[d.allestimento]}` : <Empty />}</span></div>}
+              {d.volume && <div className="sum-row"><span className="sum-key">Volume/Peso</span><span className="sum-val">{d.volume} ml/g</span></div>}
               <div className="sum-row"><span className="sum-key">Superficie</span><span className="sum-val">{d.superficie ? `${d.superficie} dm²` : <Empty />}</span></div>
               <div className="sum-row"><span className="sum-key">N° articoli</span><span className="sum-val">{d.articoli || <Empty />}</span></div>
+              {d.stufa && <div className="sum-row"><span className="sum-key">Stufa</span><span className="sum-val" style={{ fontSize: 11, whiteSpace: "pre-line", textAlign: "right", maxWidth: "55%" }}>{d.stufa}</span></div>}
+              {d.inizio_contatto && <div className="sum-row"><span className="sum-key">Inizio contatto</span><span className="sum-val">{d.inizio_contatto}</span></div>}
+              {d.ot && <div className="sum-row"><span className="sum-key">OT</span><span className="sum-val">{d.ot}</span></div>}
               {d.note && <div className="sum-note">📝 {d.note}</div>}
             </> : <div style={{ fontSize: 12, color: "#7a8099", fontStyle: "italic" }}>Non compilato</div>}
           </div>
@@ -496,8 +545,8 @@ function CompileOverlay({ sample, onSave, onClose, allSamples }) {
   const [confirmQueue, setConfirmQueue] = useState([]);
   const [currentConfirm, setCurrentConfirm] = useState(null);
   const set = (k, v) => setD(prev => ({ ...prev, [k]: v }));
-  const unit = d.allestimento ? ALLESTIMENTO_UNIT[d.allestimento] : "";
-  const volLabel = d.allestimento === "Vassoio" ? "Peso" : "Volume";
+  const unit = getUnit(d.allestimento);
+  const volLabel = "Volume/Peso";
   const others = allSamples.filter(s => s.id !== sample.id);
 
   function saveAndPropagate() { onSave([{ id: sample.id, data: { ...d } }]); setPhase("propagate"); }
@@ -558,25 +607,77 @@ function CompileOverlay({ sample, onSave, onClose, allSamples }) {
       <div className="handle" />
       <InfoPanel sample={sample} />
       <div className="divider" />
+
+      {/* Allestimento — scrollable chip list */}
       <div>
-        <div className="field-label">Allestimento</div>
-        <div className="chip-row">{ALLESTIMENTI.map(a => (
-          <div key={a} className={`chip ${d.allestimento === a ? "on" : ""}`}
-            onClick={() => { if (d.allestimento === a) { set("allestimento", null); set("volume", ""); } else { set("allestimento", a); if (a === "Tasca") { set("superficie", "2"); set("volume", "100"); } } }}>
-            {a}
-          </div>
-        ))}</div>
+        <div className="field-label">Modalità allestimento</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {ALLESTIMENTI.map(a => (
+            <div key={a}
+              style={{ padding: "11px 14px", borderRadius: 10, border: `1px solid ${d.allestimento === a ? "#4f8ef7" : "#2e3350"}`, background: d.allestimento === a ? "#2a4a8a" : "#22263a", color: d.allestimento === a ? "#4f8ef7" : "#7a8099", fontSize: 13, cursor: "pointer", fontWeight: d.allestimento === a ? 700 : 500, WebkitUserSelect: "none", userSelect: "none", whiteSpace: "pre-line" }}
+              onClick={() => { if (d.allestimento === a) { set("allestimento", null); set("volume", ""); } else { set("allestimento", a); } }}>
+              {a}
+            </div>
+          ))}
+        </div>
         {d.allestimento && <div style={{ fontSize: 11, color: "#7a8099", marginTop: 4 }}>Tocca di nuovo per deselezionare</div>}
       </div>
+
+      {/* Pesata */}
       <div><div className="field-label">Pesata</div><NumPadInput value={d.pesata} onChange={v => set("pesata", v)} unit="g" decimalDigits={2} /></div>
-      {d.allestimento && <div>
-        <div className="field-label">{volLabel}</div>
-        <NumPadInput value={d.volume} onChange={v => set("volume", v)} unit={unit} decimalDigits={d.allestimento === "Vassoio" ? 2 : 0} />
-        {d.allestimento === "Tasca" && <div style={{ fontSize: 11, color: "#7a8099", marginTop: 4 }}>ℹ️ Default: 2 dm² / 100 ml</div>}
-      </div>}
+
+      {/* Volume/Peso */}
+      <div>
+        <div className="field-label">Volume / Peso (ml/g)</div>
+        <NumPadInput value={d.volume} onChange={v => set("volume", v)} unit="ml/g" decimalDigits={2} />
+      </div>
+
+      {/* Superficie */}
       <div><div className="field-label">Superficie</div><NumInput value={d.superficie} onChange={v => set("superficie", v)} step={0.5} unit="dm²" /></div>
+
+      {/* N° Articoli */}
       <div><div className="field-label">N° Articoli</div><NumInput value={d.articoli} onChange={v => set("articoli", v)} step={1} unit="pz" /></div>
-      <div><div className="field-label">Note</div><NotesInput value={d.note} onChange={v => set("note", v)} /></div>
+
+      {/* Stufa */}
+      <div>
+        <div className="field-label">Stufa</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {STUFE.map(s => (
+            <div key={s}
+              style={{ padding: "11px 14px", borderRadius: 10, border: `1px solid ${d.stufa === s ? "#4f8ef7" : "#2e3350"}`, background: d.stufa === s ? "#2a4a8a" : "#22263a", color: d.stufa === s ? "#4f8ef7" : "#7a8099", fontSize: 13, cursor: "pointer", fontWeight: d.stufa === s ? 700 : 500, WebkitUserSelect: "none", userSelect: "none", whiteSpace: "pre-line" }}
+              onClick={() => set("stufa", d.stufa === s ? null : s)}>
+              {s}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Inizio contatto */}
+      <div>
+        <div className="field-label">Inizio contatto</div>
+        <input
+          type="date"
+          value={d.inizio_contatto || ""}
+          onChange={e => set("inizio_contatto", e.target.value)}
+          style={{ background: "#22263a", border: "1px solid #2e3350", borderRadius: 10, color: "#e8eaf0", fontFamily: "'JetBrains Mono', monospace", fontSize: 16, padding: "12px 14px", width: "100%", outline: "none" }}
+        />
+      </div>
+
+      {/* OT */}
+      <div>
+        <div className="field-label">OT</div>
+        <input
+          type="text"
+          value={d.ot || ""}
+          onChange={e => set("ot", e.target.value)}
+          placeholder="Numero OT…"
+          style={{ background: "#22263a", border: "1px solid #2e3350", borderRadius: 10, color: "#e8eaf0", fontFamily: "'JetBrains Mono', monospace", fontSize: 16, padding: "12px 14px", width: "100%", outline: "none" }}
+        />
+      </div>
+
+      {/* Note */}
+      <div><div className="field-label">Note / Oggetti</div><NotesInput value={d.note} onChange={v => set("note", v)} /></div>
+
       <div className="divider" />
       <div className="row">
         <button className="btn btn-secondary" style={{ width: 56 }} onClick={onClose}>✕</button>
