@@ -1024,11 +1024,7 @@ export default function App() {
           </div>
         )}
 
-        {screen === "summary" && <SummaryScreen samples={samples} userName={currentUser} />}>➕ Aggiungi ai campioni esistenti</button>
-            <button className="btn btn-danger" onClick={() => handleMerge("replace")}>🔄 Sostituisci tutto</button>
-            <button className="btn btn-secondary" onClick={() => { setMergeModal(null); setScreen("list"); }}>Annulla</button>
-          </div></div>
-        )}
+        {screen === "summary" && <SummaryScreen samples={samples} userName={currentUser} />}
 
         {showManualCode && (
           <ManualCodeOverlay
