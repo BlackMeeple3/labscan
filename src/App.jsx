@@ -437,11 +437,18 @@ function SummaryScreen({ samples, imagePreview, userName }) {
 
 function ManualCodeOverlay({ onConfirm, onClose, currentUser }) {
   const [digits, setDigits] = useState("");
+  const [macrocat, setMacrocat] = useState(null); // "QM" | "MS"
   const [voiceNote, setVoiceNote] = useState("");
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef();
+  const inputRef = useRef();
+
+  useEffect(() => {
+    // Auto-focus the code input on mount
+    setTimeout(() => inputRef.current?.focus(), 100);
+  }, []);
 
   const year = new Date().getFullYear().toString().slice(-2);
   const trimmed = digits.replace(/\D/g, "").slice(0, 5);
@@ -493,7 +500,7 @@ function ManualCodeOverlay({ onConfirm, onClose, currentUser }) {
 
     const note = voiceNote || "";
     const rawText = [code, note, attachmentUrl ? "📎 foto allegata" : ""].filter(Boolean).join(" — ");
-    onConfirm({ id: sampleId, code, rawText, attachmentUrl, note });
+    onConfirm({ id: sampleId, code, rawText, attachmentUrl, note, tipologia_analisi: macrocat });
   }
 
   return (
@@ -502,14 +509,34 @@ function ManualCodeOverlay({ onConfirm, onClose, currentUser }) {
         <div className="handle" />
         <div className="sh-title">Aggiungi campione</div>
 
-        {/* Codice */}
+        {/* Codice — autoFocus */}
         <div>
           <div className="field-label">Cifre del codice</div>
           <div className="code-preview">{preview}</div>
-          <input className="code-input-big" type="number" inputMode="numeric" placeholder="es. 564"
-            value={digits} onChange={e => setDigits(e.target.value.replace(/\D/g, "").slice(0, 5))} />
+          <input
+            ref={inputRef}
+            className="code-input-big"
+            type="number" inputMode="numeric" placeholder="es. 564"
+            value={digits}
+            onChange={e => setDigits(e.target.value.replace(/\D/g, "").slice(0, 5))}
+            autoFocus
+          />
           <div style={{ fontSize: 11, color: "#7a8099", marginTop: 6, textAlign: "center" }}>
             Digita le cifre → si completa con zeri
+          </div>
+        </div>
+
+        {/* Macrocategoria */}
+        <div>
+          <div className="field-label">Macrocategoria</div>
+          <div className="chip-row">
+            {["QM", "MS"].map(m => (
+              <div key={m} className={`chip ${macrocat === m ? "on" : ""}`}
+                style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono'" }}
+                onClick={() => setMacrocat(macrocat === m ? null : m)}>
+                {m}
+              </div>
+            ))}
           </div>
         </div>
 
@@ -748,10 +775,6 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
       <div className="divider" />
       <div className="row">
         <button className="btn btn-secondary" style={{ width: 56 }} onClick={onClose}>✕</button>
-        <button className="btn btn-danger" style={{ width: 56 }}
-          onClick={() => { if (window.confirm("Eliminare questo campione?")) onDelete(sample.id); }}>
-          🗑
-        </button>
         <button className="btn btn-success f1" onClick={saveAndPropagate}>✓ Salva</button>
       </div>
     </div></div>
@@ -995,6 +1018,16 @@ export default function App() {
               <div className="sample-list">
                 {samples.map(s => (
                   <div key={s.id} style={{ display: "flex", alignItems: "stretch", gap: 8 }}>
+                    {/* Delete button — left side, always visible */}
+                    <div
+                      onClick={() => { if (window.confirm(`Eliminare ${s.code || "questo campione"}?`)) handleDelete(s.id); }}
+                      style={{
+                        width: 44, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center",
+                        background: "#3a1a1a", border: "1px solid #e74c3c", flexShrink: 0,
+                        cursor: "pointer", fontSize: 18, WebkitUserSelect: "none", userSelect: "none",
+                      }}>
+                      🗑
+                    </div>
                     {/* Main card */}
                     <div className={`sample-card ${isDataFilled(s.data) ? "filled" : ""}`}
                       style={{ flex: 1 }}
@@ -1057,8 +1090,8 @@ export default function App() {
         {showManualCode && (
           <ManualCodeOverlay
             currentUser={currentUser}
-            onConfirm={({ id, code, rawText, attachmentUrl, note }) => {
-              const newS = { id: id || crypto.randomUUID(), code, rawText, attachmentUrl, data: note ? { ...emptyData(), note } : null };
+            onConfirm={({ id, code, rawText, attachmentUrl, note, tipologia_analisi }) => {
+              const newS = { id: id || crypto.randomUUID(), code, rawText, attachmentUrl, tipologia_analisi: tipologia_analisi || null, data: note ? { ...emptyData(), note } : null };
               setSamples(prev => [...prev, newS]);
               upsertCampione(currentUser, newS);
               setShowManualCode(false);
