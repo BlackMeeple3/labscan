@@ -437,6 +437,7 @@ function ManualCodeOverlay({ onConfirm, onClose, currentUser }) {
   const [photoPreview, setPhotoPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef();
+  const fileRef = useRef();
 
   useEffect(() => {
     // Auto-focus the code input on mount
