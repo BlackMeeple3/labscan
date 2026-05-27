@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { supabase, SUPABASE_CONFIGURED, TEAM_USERS, getAvatarUrl } from "./supabase.js";
 
 const C = {
@@ -180,7 +180,6 @@ function groupSamples(samples) {
   for (const s of samples) {
     const code = (s.code || "").trim();
     const analisi = (s.analisi || "").trim();
-    console.log("SAMPLE:", JSON.stringify({ code, analisi, id: s.id }));
     if (code && analisi) {
       const key = code + "|" + analisi;
       if (!groups.has(key)) {
@@ -1097,7 +1096,7 @@ export default function App() {
     showToast("Campione eliminato");
   }
 
-  const grouped = groupSamples(samples);
+  const grouped = useMemo(() => groupSamples(samples), [samples]);
   const filled = grouped.filter(g => isDataFilled(g.data)).length;
 
   if (!appReady) return (
@@ -1160,9 +1159,7 @@ export default function App() {
 
         {screen === "list" && (
           <div className="screen">
-            {samples.length > 0 ? (() => {
-              const grouped = groupSamples(samples);
-              const filledCount = grouped.filter(g => isDataFilled(g.data)).length;
+            {grouped.length > 0 ? (() => {
               return <>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div className="sec-title">{grouped.length} campioni</div>
