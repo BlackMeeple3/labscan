@@ -119,39 +119,39 @@ const css = `
 
 // ── constants ─────────────────────────────────────────────────────────────────
 const ALLESTIMENTI = [
-  "Immersione spessore <0,5mm (1dm2 in 100ml)",
-  "Immersione spessore >=0,5mm (1dm2 in 100ml)",
-  "Riempimento <500ML",
-  "Riempimento >=500ML",
+  "Immersione spessore <0,5mm (1dm² in 100ml)",
+  "Immersione spessore ≥0,5mm (1dm² in 100ml)",
+  "Riempimento <500ml",
+  "Riempimento ≥500ml",
   "Riempimento (sup. non calcolabile)",
-  "Cella (0,5dm2 in 50ml)",
-  "Cella (1dm2 in 100ml)",
-  "Cella (2dm2 in 200ml)",
-  "Tasca (2dm2 in 100ml)",
+  "Cella (0,5dm² in 50ml)",
+  "Cella (1dm² in 100ml)",
+  "Cella (2dm² in 200ml)",
+  "Tasca (2dm² in 100ml)",
   "Single-Side (Sim. E: MPPO)",
 ];
 
 const ALLESTIMENTO_DEFAULTS = {
-  "Immersione spessore <0,5mm (1dm2 in 100ml)": { superficie: "1", volume: "100" },
-  "Immersione spessore >=0,5mm (1dm2 in 100ml)": { superficie: "1", volume: "100" },
-  "Riempimento <500ML": { superficie: "", volume: "" },
-  "Riempimento >=500ML": { superficie: "", volume: "" },
+  "Immersione spessore <0,5mm (1dm² in 100ml)": { superficie: "1", volume: "100" },
+  "Immersione spessore ≥0,5mm (1dm² in 100ml)": { superficie: "1", volume: "100" },
+  "Riempimento <500ml": { superficie: "", volume: "" },
+  "Riempimento ≥500ml": { superficie: "", volume: "" },
   "Riempimento (sup. non calcolabile)": { superficie: "", volume: "" },
-  "Cella (0,5dm2 in 50ml)": { superficie: "0.5", volume: "50" },
-  "Cella (1dm2 in 100ml)": { superficie: "1", volume: "100" },
-  "Cella (2dm2 in 200ml)": { superficie: "2", volume: "200" },
-  "Tasca (2dm2 in 100ml)": { superficie: "2", volume: "100" },
+  "Cella (0,5dm² in 50ml)": { superficie: "0.5", volume: "50" },
+  "Cella (1dm² in 100ml)": { superficie: "1", volume: "100" },
+  "Cella (2dm² in 200ml)": { superficie: "2", volume: "200" },
+  "Tasca (2dm² in 100ml)": { superficie: "2", volume: "100" },
   "Single-Side (Sim. E: MPPO)": { superficie: "", volume: "" },
 };
 
 const OT_OPTIONS = ["MT", "AI", "AJ", "AT", "AM", "FDS"];
 
 const STUFE = [
-  "C.I. 29 (5-40 C)",
-  "C.I. 7 (40-70 C)",
-  "C.I. 75_B (40-70 C)",
-  "C.I. 36 (60-225 C)",
-  "C.I. 8 (60-225 C)",
+  "C.I. 29 (5-40 °C)",
+  "C.I. 7 (40-70 °C)",
+  "C.I. 75_B (40-70 °C)",
+  "C.I. 36 (60-225 °C)",
+  "C.I. 8 (60-225 °C)",
 ];
 // Unit derived from allestimento label
 function getUnit(a) { if (!a) return ""; if (a.includes("Vassoio")) return "g"; return "ml"; }
