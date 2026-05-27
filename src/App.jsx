@@ -173,6 +173,96 @@ function extractSamplesFromLines(text) {
 }
 function emptyData() { return { pesata: "", pesata2: "", pesata3: "", grammatura: "", tipo_campione: null, superficie: "", allestimento: null, volume: "", articoli: "", stufa: null, inizio_contatto: "", ot: "", note: "" }; }
 function isDataFilled(d) { return d && (d.pesata || d.superficie || d.allestimento || d.stufa || d.articoli); }
+// ── Group QM samples by code + analisi ───────────────────────────────────────
+// Returns array of items: individual samples or groups
+// A group has: type='group', code, analisi, members[], data (shared)
+function groupSamples(samples) {
+  const groups = new Map(); // key: code+"|"+analisi
+  const result = [];
+
+  for (const s of samples) {
+    // Only group if both code and analisi are present (QM samples)
+    if (s.code && s.analisi) {
+      const key = s.code + "|" + s.analisi;
+      if (!groups.has(key)) {
+        const group = {
+          type: "group",
+          id: key, // synthetic ID for the group card
+          code: s.code,
+          analisi: s.analisi,
+          // Take shared fields from first member
+          richiedente: s.richiedente,
+          rawText: s.rawText,
+          tipologia_analisi: s.tipologia_analisi,
+          valore: s.valore,
+          nota_param: s.nota_param,
+          prep_qm: s.prep_qm,
+          // Collect varying fields
+          codiciAnalisi: [],
+          tipiProva: [],
+          members: [],
+          // Shared data (compiled once, applied to all)
+          data: s.data && isDataFilled(s.data) ? { ...s.data } : null,
+        };
+        groups.set(key, group);
+        result.push(group);
+      }
+      const g = groups.get(key);
+      g.members.push(s);
+      if (s.codice_analisi && !g.codiciAnalisi.includes(s.codice_analisi))
+        g.codiciAnalisi.push(s.codice_analisi);
+      if (s.tipologia_prova && !g.tipiProva.includes(s.tipologia_prova))
+        g.tipiProva.push(s.tipologia_prova);
+      // If any member is filled, use that data for the group
+      if (!g.data && isDataFilled(s.data)) g.data = { ...s.data };
+    } else {
+      result.push({ ...s, type: "single" });
+    }
+  }
+
+  // Mark groups as filled if data present
+  for (const item of result) {
+    if (item.type === "group") {
+      item.filled = isDataFilled(item.data);
+    } else {
+      item.filled = isDataFilled(item.data);
+    }
+  }
+
+  return result;
+}
+
+// ── Group QM samples by code + analisi ───────────────────────────────────────
+function groupSamples(samples) {
+  const groups = new Map();
+  const result = [];
+  for (const s of samples) {
+    if (s.code && s.analisi) {
+      const key = s.code + "|" + s.analisi;
+      if (!groups.has(key)) {
+        const g = {
+          type: "group", id: key,
+          code: s.code, analisi: s.analisi,
+          richiedente: s.richiedente, rawText: s.rawText,
+          tipologia_analisi: s.tipologia_analisi,
+          valore: s.valore, nota_param: s.nota_param, prep_qm: s.prep_qm,
+          codiciAnalisi: [], tipiProva: [], members: [],
+          data: isDataFilled(s.data) ? { ...s.data } : null,
+        };
+        groups.set(key, g); result.push(g);
+      }
+      const g = groups.get(key);
+      g.members.push(s);
+      if (s.codice_analisi && !g.codiciAnalisi.includes(s.codice_analisi)) g.codiciAnalisi.push(s.codice_analisi);
+      if (s.tipologia_prova && !g.tipiProva.includes(s.tipologia_prova)) g.tipiProva.push(s.tipologia_prova);
+      if (!g.data && isDataFilled(s.data)) g.data = { ...s.data };
+    } else {
+      result.push({ ...s, type: "single" });
+    }
+  }
+  return result;
+}
+
 function padCode(digits) {
   const year = new Date().getFullYear().toString().slice(-2);
   return `${year}LD${digits.padStart(5, "0")}`;
@@ -292,18 +382,52 @@ function NotesInput({ value, onChange }) {
 }
 
 function InfoPanel({ sample }) {
-  const fields = [
-    { label: "Codice", val: sample.code },
+  const [showCodici, setShowCodici] = useState(false);
+  const [showTipi, setShowTipi] = useState(false);
+  const isGroup = sample.type === "group";
+
+  const sharedFields = [
     { label: "Richiedente", val: sample.richiedente },
     { label: "Descrizione", val: sample.rawText },
-    // Codice analisi + Analisi + Prep QM on same row
-    { label: "Tipo prova", val: sample.tipologia_prova },
     { label: "Tipo analisi", val: sample.tipologia_analisi },
     { label: "Valore", val: sample.valore },
     { label: "Nota param.", val: sample.nota_param },
+    { label: "Prep. QM", val: sample.prep_qm },
   ].filter(f => f.val && f.val !== "None" && f.val !== "");
 
-  // Build the combined analisi row
+  if (isGroup) {
+    return (
+      <div className="info-panel">
+        <div className="info-panel-code">{sample.code}</div>
+        <div><div className="info-panel-label">Analisi</div><div className="info-panel-val" style={{ fontWeight: 700 }}>{sample.analisi}</div></div>
+
+        {/* Codici analisi — collapsible */}
+        {sample.codiciAnalisi?.length > 0 && (
+          <div style={{ cursor: "pointer" }} onClick={() => setShowCodici(v => !v)}>
+            <div className="info-panel-label">Codici analisi ({sample.codiciAnalisi.length}) {showCodici ? "▼" : "▶"}</div>
+            {showCodici && <div className="info-panel-val" style={{ fontSize: 11 }}>{sample.codiciAnalisi.join(" | ")}</div>}
+          </div>
+        )}
+
+        {/* Tipi prova — collapsible */}
+        {sample.tipiProva?.length > 0 && (
+          <div style={{ cursor: "pointer" }} onClick={() => setShowTipi(v => !v)}>
+            <div className="info-panel-label">Tipi prova ({sample.tipiProva.length}) {showTipi ? "▼" : "▶"}</div>
+            {showTipi && <div className="info-panel-val" style={{ fontSize: 11 }}>{sample.tipiProva.join(" | ")}</div>}
+          </div>
+        )}
+
+        {sharedFields.map((f, i) => (
+          <div key={i}><div className="info-panel-label">{f.label}</div><div className="info-panel-val">{f.val}</div></div>
+        ))}
+        <div style={{ fontSize: 11, color: "#7a8099", marginTop: 2 }}>
+          {sample.members?.length} righe — dati applicati a tutte
+        </div>
+      </div>
+    );
+  }
+
+  // Single sample
   const codAN = sample.codice_analisi;
   const analisi = sample.analisi;
   const prepQM = sample.prep_qm;
@@ -318,11 +442,15 @@ function InfoPanel({ sample }) {
           <div className="info-panel-val" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>{analisiRow}</div>
         </div>
       )}
-      {fields.slice(1).map((f, i) => (
-        <div key={i}>
-          <div className="info-panel-label">{f.label}</div>
-          <div className="info-panel-val">{f.val}</div>
-        </div>
+      {[
+        { label: "Richiedente", val: sample.richiedente },
+        { label: "Descrizione", val: sample.rawText },
+        { label: "Tipo prova", val: sample.tipologia_prova },
+        { label: "Tipo analisi", val: sample.tipologia_analisi },
+        { label: "Valore", val: sample.valore },
+        { label: "Nota param.", val: sample.nota_param },
+      ].filter(f => f.val && f.val !== "None" && f.val !== "").map((f, i) => (
+        <div key={i}><div className="info-panel-label">{f.label}</div><div className="info-panel-val">{f.val}</div></div>
       ))}
     </div>
   );
@@ -991,11 +1119,24 @@ export default function App() {
   async function handleSave(updates) {
     setSamples(prev => {
       const m = new Map(updates.map(u => [u.id, u.data]));
-      const next = prev.map(s => m.has(s.id) ? { ...s, data: m.get(s.id) } : s);
-      // Save to Supabase
-      updates.forEach(u => {
-        const s = next.find(x => x.id === u.id);
-        if (s) upsertCampione(currentUser, s);
+      // For group saves, u.id is the group key "code|analisi" — apply to all matching members
+      const next = prev.map(s => {
+        // Direct match by ID
+        if (m.has(s.id)) {
+          const newS = { ...s, data: m.get(s.id) };
+          upsertCampione(currentUser, newS);
+          return newS;
+        }
+        // Group match: check if any update key matches "code|analisi"
+        if (s.code && s.analisi) {
+          const groupKey = s.code + "|" + s.analisi;
+          if (m.has(groupKey)) {
+            const newS = { ...s, data: m.get(groupKey) };
+            upsertCampione(currentUser, newS);
+            return newS;
+          }
+        }
+        return s;
       });
       return next;
     });
@@ -1012,7 +1153,8 @@ export default function App() {
     showToast("Campione eliminato");
   }
 
-  const filled = samples.filter(s => isDataFilled(s.data)).length;
+  const grouped = groupSamples(samples);
+  const filled = grouped.filter(g => isDataFilled(g.data)).length;
 
   if (!appReady) return (
     <>
@@ -1042,8 +1184,8 @@ export default function App() {
                 onError={e => { e.target.style.display = "none"; e.target.parentNode.innerHTML = `<span style="font-size:13px;color:#4f8ef7;font-weight:700">${currentUser[0]}</span>`; }} />
             </div>
             {screen === "list" && <>
-              <span style={{ fontSize: 11, color: "#7a8099", fontFamily: "'JetBrains Mono'" }}>{filled}/{samples.length}</span>
-              {samples.length > 0 && <button className="btn-sm" onClick={() => setScreen("summary")}>📋 Riepilogo</button>}
+              <span style={{ fontSize: 11, color: "#7a8099", fontFamily: "'JetBrains Mono'" }}>{filled}/{grouped.length}</span>
+              {grouped.length > 0 && <button className="btn-sm" onClick={() => setScreen("summary")}>📋 Riepilogo</button>}
             </>}
             {screen === "summary" && <button className="btn-sm" onClick={() => setScreen("list")}>← Lista</button>}
           </div>
@@ -1074,62 +1216,60 @@ export default function App() {
 
         {screen === "list" && (
           <div className="screen">
-            {samples.length > 0 ? <>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div className="sec-title">{samples.length} campioni</div>
-                <div style={{ fontSize: 11, color: taken.size > 0 ? "#2ecc71" : "#7a8099", fontFamily: "'JetBrains Mono'" }}>
-                  📦 Scaffale: {taken.size}/{samples.length}
-                </div>
-              </div>
-              <div className="sample-list">
-                {samples.map(s => (
-                  <div key={s.id} style={{ display: "flex", alignItems: "stretch", gap: 8 }}>
-                    {/* Delete button — left */}
-                    <div
-                      onClick={() => { if (window.confirm(`Eliminare ${s.code || "questo campione"}?`)) handleDelete(s.id); }}
-                      style={{
-                        width: 44, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center",
-                        background: "#3a1a1a", border: "1px solid #e74c3c", flexShrink: 0,
-                        cursor: "pointer", fontSize: 18, WebkitUserSelect: "none", userSelect: "none",
-                      }}>
-                      🗑
-                    </div>
-                    {/* Shelf checkbox */}
-                    <div
-                      onClick={() => setTaken(prev => { const n = new Set(prev); n.has(s.id) ? n.delete(s.id) : n.add(s.id); return n; })}
-                      style={{
-                        width: 44, borderRadius: 12, display: "flex", flexDirection: "column",
-                        alignItems: "center", justifyContent: "center", gap: 3, cursor: "pointer",
-                        background: taken.has(s.id) ? "#1a4a30" : "#22263a",
-                        border: `1px solid ${taken.has(s.id) ? "#2ecc71" : "#2e3350"}`,
-                        flexShrink: 0, WebkitUserSelect: "none", userSelect: "none",
-                        transition: "all 0.15s",
-                      }}>
-                      <div style={{ fontSize: taken.has(s.id) ? 18 : 16, lineHeight: 1 }}>
-                        {taken.has(s.id) ? "✓" : "○"}
-                      </div>
-                      <div style={{ fontSize: 8, color: taken.has(s.id) ? "#2ecc71" : "#7a8099", textAlign: "center", lineHeight: 1.2 }}>
-                        Scaffale
-                      </div>
-                    </div>
-                    {/* Main card */}
-                    <div className={`sample-card ${isDataFilled(s.data) ? "filled" : ""}`}
-                      style={{ flex: 1 }}
-                      onClick={() => setActiveSample(s)}>
-                      <div className="s-code">
-                        <div className={`s-dot ${isDataFilled(s.data) ? "on" : ""}`} />
-                        {s.code || <span style={{ color: "#f39c12" }}>⚠ Codice non trovato</span>}
-                        {isDataFilled(s.data) && <span className="badge badge-ok" style={{ marginLeft: "auto" }}>✓</span>}
-                      </div>
-                      <div className="s-text">{s.tipologia_prova || s.rawText}</div>
-                    </div>
+            {samples.length > 0 ? (() => {
+              const grouped = groupSamples(samples);
+              const filledCount = grouped.filter(g => isDataFilled(g.data)).length;
+              return <>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div className="sec-title">{grouped.length} campioni</div>
+                  <div style={{ fontSize: 11, color: taken.size > 0 ? "#2ecc71" : "#7a8099", fontFamily: "'JetBrains Mono'" }}>
+                    📦 {taken.size}/{grouped.length}
                   </div>
-                ))}
-              </div>
-            </> : (
+                </div>
+                <div className="sample-list">
+                  {grouped.map(item => {
+                    const itemFilled = isDataFilled(item.data);
+                    const itemId = item.id;
+                    const isGroup = item.type === "group";
+                    return (
+                      <div key={itemId} style={{ display: "flex", alignItems: "stretch", gap: 8 }}>
+                        {/* Delete */}
+                        <div onClick={() => {
+                          const label = item.code || "questo campione";
+                          if (window.confirm(`Eliminare ${label}${isGroup ? ` (${item.members.length} righe)` : ""}?`)) {
+                            if (isGroup) { item.members.forEach(m => handleDelete(m.id)); }
+                            else { handleDelete(item.id); }
+                          }
+                        }} style={{ width: 44, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", background: "#3a1a1a", border: "1px solid #e74c3c", flexShrink: 0, cursor: "pointer", fontSize: 18, WebkitUserSelect: "none", userSelect: "none" }}>
+                          🗑
+                        </div>
+                        {/* Shelf */}
+                        <div onClick={() => setTaken(prev => { const n = new Set(prev); n.has(itemId) ? n.delete(itemId) : n.add(itemId); return n; })}
+                          style={{ width: 44, borderRadius: 12, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, cursor: "pointer", background: taken.has(itemId) ? "#1a4a30" : "#22263a", border: `1px solid ${taken.has(itemId) ? "#2ecc71" : "#2e3350"}`, flexShrink: 0, WebkitUserSelect: "none", userSelect: "none", transition: "all 0.15s" }}>
+                          <div style={{ fontSize: taken.has(itemId) ? 18 : 16, lineHeight: 1 }}>{taken.has(itemId) ? "✓" : "○"}</div>
+                          <div style={{ fontSize: 8, color: taken.has(itemId) ? "#2ecc71" : "#7a8099", textAlign: "center", lineHeight: 1.2 }}>Scaffale</div>
+                        </div>
+                        {/* Card */}
+                        <div className={`sample-card ${itemFilled ? "filled" : ""}`} style={{ flex: 1 }} onClick={() => setActiveSample(item)}>
+                          <div className="s-code">
+                            <div className={`s-dot ${itemFilled ? "on" : ""}`} />
+                            {item.code || <span style={{ color: "#f39c12" }}>⚠ Codice non trovato</span>}
+                            {isGroup && <span style={{ fontSize: 10, color: "#7a8099", marginLeft: 6 }}>×{item.members.length}</span>}
+                            {itemFilled && <span className="badge badge-ok" style={{ marginLeft: "auto" }}>✓</span>}
+                          </div>
+                          <div className="s-text">
+                            {isGroup ? item.analisi : (item.tipologia_prova || item.rawText)}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>;
+            })() : (
               <div style={{ textAlign: "center", padding: "32px 0" }}>
                 <div style={{ fontSize: 32, marginBottom: 10 }}>🔍</div>
-                <div style={{ color: "#7a8099", fontSize: 14 }}>Nessun campione. Scatta una foto o aggiungi manualmente.</div>
+                <div style={{ color: "#7a8099", fontSize: 14 }}>Nessun campione. Aggiungi manualmente.</div>
               </div>
             )}
             <button className="btn btn-secondary" onClick={() => setShowManualCode(true)}>+ Aggiungi campione manuale</button>
