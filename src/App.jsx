@@ -869,17 +869,37 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
       <div className="handle" /><div className="sh-title">Applica ad altri?</div>
       {others.length === 0
         ? <div style={{ color: "#7a8099", fontSize: 13, textAlign: "center", padding: "16px 0" }}>Nessun altro campione</div>
-        : <div className="prop-list">{others.map(s => (
-            <div key={s.id} className={`prop-item ${selected.includes(s.id) ? "on" : ""}`}
-              onClick={() => setSelected(sel => sel.includes(s.id) ? sel.filter(x => x !== s.id) : [...sel, s.id])}>
-              <div className="prop-check">{selected.includes(s.id) ? "✓" : ""}</div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: "'JetBrains Mono'", fontSize: 13, fontWeight: 700, color: "#4f8ef7" }}>{s.code || "—"}</div>
-                <div style={{ fontSize: 11, color: "#7a8099", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.tipologia_prova || s.rawText}</div>
+        : <div className="prop-list">{groupSamples(others).map(item => {
+            const itemId = item.id;
+            const isGrp = item.type === "group";
+            const memberIds = isGrp ? item.members.map(m => m.id) : [item.id];
+            const isSelected = isGrp
+              ? memberIds.some(id => selected.includes(id))
+              : selected.includes(itemId);
+            return (
+              <div key={itemId} className={`prop-item ${isSelected ? "on" : ""}`}
+                onClick={() => {
+                  if (isGrp) {
+                    setSelected(sel => isSelected
+                      ? sel.filter(x => !memberIds.includes(x))
+                      : [...sel, ...memberIds.filter(id => !sel.includes(id))]);
+                  } else {
+                    setSelected(sel => sel.includes(itemId) ? sel.filter(x => x !== itemId) : [...sel, itemId]);
+                  }
+                }}>
+                <div className="prop-check">{isSelected ? "✓" : ""}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: "'JetBrains Mono'", fontSize: 13, fontWeight: 700, color: "#4f8ef7" }}>
+                    {item.code || "—"}{isGrp && <span style={{ fontSize: 10, color: "#7a8099", marginLeft: 6 }}>×{item.members.length}</span>}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#7a8099", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {isGrp ? item.analisi : (item.tipologia_prova || item.rawText)}
+                  </div>
+                </div>
+                {isDataFilled(item.data) && <span className="badge badge-warn">compilato</span>}
               </div>
-              {isDataFilled(s.data) && <span className="badge badge-warn">compilato</span>}
-            </div>
-          ))}</div>
+            );
+          })}</div>
       }
       <div className="row">
         <button className="btn btn-secondary f1" onClick={onClose}>Salta</button>
