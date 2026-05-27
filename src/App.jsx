@@ -178,12 +178,14 @@ function groupSamples(samples) {
   const groups = new Map();
   const result = [];
   for (const s of samples) {
-    if (s.code && s.analisi) {
-      const key = s.code + "|" + s.analisi;
+    const code = (s.code || "").trim();
+    const analisi = (s.analisi || "").trim();
+    if (code && analisi) {
+      const key = code + "|" + analisi;
       if (!groups.has(key)) {
         const g = {
           type: "group", id: key,
-          code: s.code, analisi: s.analisi,
+          code, analisi,
           richiedente: s.richiedente, rawText: s.rawText,
           tipologia_analisi: s.tipologia_analisi,
           valore: s.valore, nota_param: s.nota_param, prep_qm: s.prep_qm,
@@ -224,7 +226,7 @@ async function loadUserCampioni(userName, onlyToday = false) {
     if (!onlyToday && data && data.length === 50) {
       alert("Attenzione: sono stati caricati i 50 campioni più recenti. Potrebbero essercene altri nel database.");
     }
-    return (data || []).map(r => ({ id: r.id, code: r.codice_id, rawText: r.descrizione_campione, richiedente: r.richiedente, codice_analisi: r.codice_analisi, analisi: r.analisi, prep_qm: r.prep_qm, valore: r.valore, nota_param: r.nota_param, tipologia_prova: r.tipologia_prova, tipologia_analisi: r.tipologia_analisi, data: { pesata: r.pesata || "", pesata2: r.pesata2 || "", pesata3: r.pesata3 || "", grammatura: r.grammatura || "", tipo_campione: r.tipo_campione || null, superficie: r.superficie || "", allestimento: r.modalita_allestimento || null, volume: r.volume_peso || "", articoli: r.numero_articoli || "", stufa: r.stufa || null, inizio_contatto: r.inizio_contatto || "", ot: r.ot || "", note: r.note_oggetti || "" } }));
+    return (data || []).map(r => ({ id: r.id, code: r.codice_id, rawText: r.descrizione_campione, richiedente: r.richiedente, codice_analisi: r.codice_analisi, analisi: r.analisi ? r.analisi.trim() : null, prep_qm: r.prep_qm, valore: r.valore, nota_param: r.nota_param, tipologia_prova: r.tipologia_prova, tipologia_analisi: r.tipologia_analisi, data: { pesata: r.pesata || "", pesata2: r.pesata2 || "", pesata3: r.pesata3 || "", grammatura: r.grammatura || "", tipo_campione: r.tipo_campione || null, superficie: r.superficie || "", allestimento: r.modalita_allestimento || null, volume: r.volume_peso || "", articoli: r.numero_articoli || "", stufa: r.stufa || null, inizio_contatto: r.inizio_contatto || "", ot: r.ot || "", note: r.note_oggetti || "" } }));
   } catch (_) { return []; }
 }
 
