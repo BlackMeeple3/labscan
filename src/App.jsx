@@ -216,15 +216,15 @@ function padCode(digits) {
 async function loadUserCampioni(userName, onlyToday = false) {
   if (!SUPABASE_CONFIGURED) return [];
   try {
-    let query = supabase.from("campioni").select("*").eq("user_name", userName).order("created_at", { ascending: false }).limit(50);
+    let query = supabase.from("campioni").select("*").eq("user_name", userName).order("created_at", { ascending: false }).limit(300);
     if (onlyToday) {
       const today = new Date().toISOString().split("T")[0];
       query = query.gte("created_at", today + "T00:00:00Z");
     }
     const { data, error } = await query;
     if (error) throw error;
-    if (!onlyToday && data && data.length === 50) {
-      alert("Attenzione: sono stati caricati i 50 campioni più recenti. Potrebbero essercene altri nel database.");
+    if (!onlyToday && data && data.length === 300) {
+      alert("Attenzione: sono stati caricati i 300 campioni più recenti. Potrebbero essercene altri nel database.");
     }
     return (data || []).map(r => ({ id: r.id, code: r.codice_id, rawText: r.descrizione_campione, richiedente: r.richiedente, codice_analisi: r.codice_analisi, analisi: r.analisi ? r.analisi.trim() : null, prep_qm: r.prep_qm, valore: r.valore, nota_param: r.nota_param, tipologia_prova: r.tipologia_prova, tipologia_analisi: r.tipologia_analisi, data: { pesata: r.pesata || "", pesata2: r.pesata2 || "", pesata3: r.pesata3 || "", grammatura: r.grammatura || "", tipo_campione: r.tipo_campione || null, superficie: r.superficie || "", allestimento: r.modalita_allestimento || null, volume: r.volume_peso || "", articoli: r.numero_articoli || "", stufa: r.stufa || null, inizio_contatto: r.inizio_contatto || "", ot: r.ot || "", note: r.note_oggetti || "" } }));
   } catch (_) { return []; }
@@ -233,6 +233,14 @@ async function loadUserCampioni(userName, onlyToday = false) {
 async function upsertCampione(userName, sample) {
   if (!SUPABASE_CONFIGURED) return;
   try {
+    // Check daily limit (500 per user)
+    const today = new Date().toISOString().split("T")[0];
+    const { count } = await supabase.from("campioni").select("*", { count: "exact", head: true })
+      .eq("user_name", userName).gte("created_at", today + "T00:00:00Z");
+    if (count >= 500) {
+      alert("Limite giornaliero raggiunto: 500 campioni per utente al giorno.");
+      return;
+    }
     const row = { id: sample.id, user_name: userName, codice_id: sample.code, richiedente: sample.richiedente || null, descrizione_campione: sample.rawText, codice_analisi: sample.codice_analisi || null, analisi: sample.analisi || null, prep_qm: sample.prep_qm || null, valore: sample.valore || null, nota_param: sample.nota_param || null, tipologia_prova: sample.tipologia_prova || null, tipologia_analisi: sample.tipologia_analisi || null, modalita_allestimento: sample.data?.allestimento || null, volume_peso: sample.data?.volume || null, superficie: sample.data?.superficie || null, stufa: sample.data?.stufa || null, note_oggetti: sample.data?.note || null, inizio_contatto: sample.data?.inizio_contatto || null, numero_articoli: sample.data?.articoli || null, ot: sample.data?.ot || null, pesata: sample.data?.pesata || null, pesata2: sample.data?.pesata2 || null, pesata3: sample.data?.pesata3 || null, grammatura: sample.data?.grammatura || null, tipo_campione: sample.data?.tipo_campione || null };
     await supabase.from("campioni").upsert(row, { onConflict: "id" });
   } catch (_) {}
@@ -1096,11 +1104,7 @@ export default function App() {
     showToast("Campione eliminato");
   }
 
-  const grouped = useMemo(() => {
-    const result = groupSamples(samples);
-    console.log("GROUPED RESULT:", result.map(g => ({ id: g.id, type: g.type, members: g.members?.length })));
-    return result;
-  }, [samples]);
+  const grouped = useMemo(() => groupSamples(samples), [samples]);
   const filled = grouped.filter(g => isDataFilled(g.data)).length;
 
   if (!appReady) return (
