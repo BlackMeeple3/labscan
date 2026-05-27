@@ -1096,7 +1096,11 @@ export default function App() {
     showToast("Campione eliminato");
   }
 
-  const grouped = useMemo(() => groupSamples(samples), [samples]);
+  const grouped = useMemo(() => {
+    const result = groupSamples(samples);
+    console.log("GROUPED RESULT:", result.map(g => ({ id: g.id, type: g.type, members: g.members?.length })));
+    return result;
+  }, [samples]);
   const filled = grouped.filter(g => isDataFilled(g.data)).length;
 
   if (!appReady) return (
