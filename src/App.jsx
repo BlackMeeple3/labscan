@@ -1172,7 +1172,7 @@ export default function App() {
 
             {samples.length > 0 && (
               <button className="btn btn-secondary" onClick={() => setScreen("list")}>
-                📋 Continua — {samples.length} campioni ({filled} compilati)
+                📋 Continua — {grouped.length} campioni ({filled} compilati)
               </button>
             )}
             <button className="btn btn-secondary" onClick={async () => {
