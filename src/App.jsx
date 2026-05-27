@@ -174,65 +174,6 @@ function extractSamplesFromLines(text) {
 function emptyData() { return { pesata: "", pesata2: "", pesata3: "", grammatura: "", tipo_campione: null, superficie: "", allestimento: null, volume: "", articoli: "", stufa: null, inizio_contatto: "", ot: "", note: "" }; }
 function isDataFilled(d) { return d && (d.pesata || d.superficie || d.allestimento || d.stufa || d.articoli); }
 // ── Group QM samples by code + analisi ───────────────────────────────────────
-// Returns array of items: individual samples or groups
-// A group has: type='group', code, analisi, members[], data (shared)
-function groupSamples(samples) {
-  const groups = new Map(); // key: code+"|"+analisi
-  const result = [];
-
-  for (const s of samples) {
-    // Only group if both code and analisi are present (QM samples)
-    if (s.code && s.analisi) {
-      const key = s.code + "|" + s.analisi;
-      if (!groups.has(key)) {
-        const group = {
-          type: "group",
-          id: key, // synthetic ID for the group card
-          code: s.code,
-          analisi: s.analisi,
-          // Take shared fields from first member
-          richiedente: s.richiedente,
-          rawText: s.rawText,
-          tipologia_analisi: s.tipologia_analisi,
-          valore: s.valore,
-          nota_param: s.nota_param,
-          prep_qm: s.prep_qm,
-          // Collect varying fields
-          codiciAnalisi: [],
-          tipiProva: [],
-          members: [],
-          // Shared data (compiled once, applied to all)
-          data: s.data && isDataFilled(s.data) ? { ...s.data } : null,
-        };
-        groups.set(key, group);
-        result.push(group);
-      }
-      const g = groups.get(key);
-      g.members.push(s);
-      if (s.codice_analisi && !g.codiciAnalisi.includes(s.codice_analisi))
-        g.codiciAnalisi.push(s.codice_analisi);
-      if (s.tipologia_prova && !g.tipiProva.includes(s.tipologia_prova))
-        g.tipiProva.push(s.tipologia_prova);
-      // If any member is filled, use that data for the group
-      if (!g.data && isDataFilled(s.data)) g.data = { ...s.data };
-    } else {
-      result.push({ ...s, type: "single" });
-    }
-  }
-
-  // Mark groups as filled if data present
-  for (const item of result) {
-    if (item.type === "group") {
-      item.filled = isDataFilled(item.data);
-    } else {
-      item.filled = isDataFilled(item.data);
-    }
-  }
-
-  return result;
-}
-
-// ── Group QM samples by code + analisi ───────────────────────────────────────
 function groupSamples(samples) {
   const groups = new Map();
   const result = [];
