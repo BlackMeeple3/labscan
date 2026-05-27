@@ -180,6 +180,7 @@ function groupSamples(samples) {
   for (const s of samples) {
     const code = (s.code || "").trim();
     const analisi = (s.analisi || "").trim();
+    console.log("SAMPLE:", JSON.stringify({ code, analisi, id: s.id }));
     if (code && analisi) {
       const key = code + "|" + analisi;
       if (!groups.has(key)) {
