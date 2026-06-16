@@ -988,16 +988,19 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
       {/* ── SEZIONE SCREENING ── */}
       <SectionHeader label="Screening/Studi" open={openSC} onToggle={() => setOpenSC(v => !v)} />
       {openSC && <>
+          {/* Inizio contatto */}
           <div>
-            <div className="field-label">Modalità allestimento</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {ALLESTIMENTI.map(a => (
-                <div key={a}
-                  style={{ padding: "11px 14px", borderRadius: 10, border: `1px solid ${d.allestimento === a ? "#4f8ef7" : "#2e3350"}`, background: d.allestimento === a ? "#2a4a8a" : "#22263a", color: d.allestimento === a ? "#4f8ef7" : "#7a8099", fontSize: 13, cursor: "pointer", fontWeight: d.allestimento === a ? 700 : 500, WebkitUserSelect: "none", userSelect: "none" }}
-                  onClick={() => handleAllestimento(a)}>{a}</div>
-              ))}
+            <div className="field-label">Inizio contatto</div>
+            <div className="row" style={{ alignItems: "center" }}>
+              <input type="date" value={d.inizio_contatto || ""} onChange={e => set("inizio_contatto", e.target.value)}
+                style={{ flex: 1, background: "#22263a", border: "1px solid #2e3350", borderRadius: 10, color: "#e8eaf0", fontFamily: "'JetBrains Mono', monospace", fontSize: 16, padding: "12px 14px", outline: "none" }} />
+              <button className="btn-sm" onClick={() => set("inizio_contatto", new Date().toISOString().split("T")[0])}
+                style={{ flexShrink: 0, marginLeft: 8 }}>📅 Oggi</button>
             </div>
           </div>
+          {/* Superficie */}
+          <div><div className="field-label">Superficie</div><NumPadInput value={d.superficie} onChange={v => set("superficie", v)} unit="dm²" decimalDigits={2} /></div>
+          {/* Pesata */}
           <div><div className="field-label">Pesata 1</div><NumPadInput value={d.pesata} onChange={v => set("pesata", v)} unit="g" decimalDigits={4} /></div>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", WebkitUserSelect: "none" }} onClick={() => setOpenRep(v => !v)}>
@@ -1008,39 +1011,24 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
               <div style={{ marginTop: 10 }}><div className="field-label">Pesata 3</div><NumPadInput value={d.pesata3} onChange={v => set("pesata3", v)} unit="g" decimalDigits={4} /></div>
             </>}
           </div>
-          <div><div className="field-label">Volume / Peso (ml/g)</div><NumPadInput value={d.volume} onChange={v => set("volume", v)} unit="ml/g" decimalDigits={2} /></div>
-          <div><div className="field-label">Superficie</div><NumPadInput value={d.superficie} onChange={v => set("superficie", v)} unit="dm²" decimalDigits={2} /></div>
+          {/* Allestimento */}
+          <div>
+            <div className="field-label">Modalità allestimento</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {ALLESTIMENTI.map(a => (
+                <div key={a}
+                  style={{ padding: "11px 14px", borderRadius: 10, border: `1px solid ${d.allestimento === a ? "#4f8ef7" : "#2e3350"}`, background: d.allestimento === a ? "#2a4a8a" : "#22263a", color: d.allestimento === a ? "#4f8ef7" : "#7a8099", fontSize: 13, cursor: "pointer", fontWeight: d.allestimento === a ? 700 : 500, WebkitUserSelect: "none", userSelect: "none" }}
+                  onClick={() => handleAllestimento(a)}>{a}</div>
+              ))}
+            </div>
+          </div>
+          {/* Note */}
           <div><div className="field-label">Note / Oggetti</div><NotesInput value={d.note} onChange={v => set("note", v)} /></div>
       </>}
 
       <div className="divider" />
 
-      {/* Stufa */}
-      <div>
-        <div className="field-label">Stufa</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {STUFE.map(s => (
-            <div key={s}
-              style={{ padding: "11px 14px", borderRadius: 10, border: `1px solid ${d.stufa === s ? "#4f8ef7" : "#2e3350"}`, background: d.stufa === s ? "#2a4a8a" : "#22263a", color: d.stufa === s ? "#4f8ef7" : "#7a8099", fontSize: 13, cursor: "pointer", fontWeight: d.stufa === s ? 700 : 500, WebkitUserSelect: "none", userSelect: "none" }}
-              onClick={() => set("stufa", d.stufa === s ? null : s)}>
-              {s}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Inizio contatto */}
-      <div>
-        <div className="field-label">Inizio contatto</div>
-        <div className="row" style={{ alignItems: "center" }}>
-          <input type="date" value={d.inizio_contatto || ""} onChange={e => set("inizio_contatto", e.target.value)}
-            style={{ flex: 1, background: "#22263a", border: "1px solid #2e3350", borderRadius: 10, color: "#e8eaf0", fontFamily: "'JetBrains Mono', monospace", fontSize: 16, padding: "12px 14px", outline: "none" }} />
-          <button className="btn-sm" onClick={() => set("inizio_contatto", new Date().toISOString().split("T")[0])}
-            style={{ flexShrink: 0, marginLeft: 8 }}>📅 Oggi</button>
-        </div>
-      </div>
-
-      {/* OT */}
+      {/* OT — sempre visibile */}
       <div>
         <div className="field-label">OT — Operatore Tecnico</div>
         <div className="chip-row" style={{ marginBottom: 8 }}>
@@ -1053,9 +1041,6 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
           placeholder="Oppure scrivi sigla personalizzata…"
           style={{ background: "#22263a", border: "1px solid #2e3350", borderRadius: 10, color: "#e8eaf0", fontFamily: "'JetBrains Mono', monospace", fontSize: 15, padding: "10px 14px", width: "100%", outline: "none" }} />
       </div>
-
-      {/* Note */}
-      <div><div className="field-label">Note / Oggetti</div><NotesInput value={d.note} onChange={v => set("note", v)} /></div>
 
       <div className="divider" />
       <div className="row">
