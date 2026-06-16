@@ -1091,7 +1091,9 @@ export default function App() {
   const [samples, setSamples] = useState([]);
   const [activeSample, setActiveSample] = useState(null);
   const [showManualCode, setShowManualCode] = useState(false);
-  const [taken, setTaken] = useState(new Set()); // local-only shelf checklist
+  const [taken, setTaken] = useState(new Set());
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectIds, setSelectIds] = useState(new Set()); // local-only shelf checklist
   const [toast, setToast] = useState(null);
 
   // Always start at user selection — no device tracking
@@ -1209,44 +1211,76 @@ export default function App() {
               return <>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div className="sec-title">{grouped.length} campioni</div>
-                  <div style={{ fontSize: 11, color: taken.size > 0 ? "#2ecc71" : "#7a8099", fontFamily: "'JetBrains Mono'" }}>
-                    📦 {taken.size}/{grouped.length}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ fontSize: 11, color: taken.size > 0 ? "#2ecc71" : "#7a8099", fontFamily: "'JetBrains Mono'" }}>
+                      📦 {taken.size}/{grouped.length}
+                    </div>
+                    <button className="btn-sm" onClick={() => { setSelectMode(v => !v); setSelectIds(new Set()); }}
+                      style={{ background: selectMode ? "#4f8ef7" : "#22263a", color: selectMode ? "#fff" : "#7a8099", border: "1px solid #2e3350" }}>
+                      {selectMode ? "✕ Annulla" : "☑ Seleziona"}
+                    </button>
                   </div>
                 </div>
+
+                {selectMode && (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <button className="btn-sm" onClick={() => setSelectIds(new Set(grouped.map(g => g.id)))}>
+                      Seleziona tutti
+                    </button>
+                    <button className="btn-sm" onClick={() => setSelectIds(new Set())}>
+                      Deseleziona tutti
+                    </button>
+                    {selectIds.size > 0 && (
+                      <button className="btn-sm" style={{ background: "#3a1a1a", color: "#e74c3c", border: "1px solid #e74c3c" }}
+                        onClick={() => {
+                          if (!window.confirm(`Eliminare ${selectIds.size} campioni?`)) return;
+                          grouped.filter(g => selectIds.has(g.id)).forEach(g => {
+                            if (g.type === "group") g.members.forEach(m => handleDelete(m.id));
+                            else handleDelete(g.id);
+                          });
+                          setSelectIds(new Set());
+                          setSelectMode(false);
+                        }}>
+                        🗑 Elimina ({selectIds.size})
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 <div className="sample-list">
                   {grouped.map(item => {
                     const itemFilled = isDataFilled(item.data);
                     const itemId = item.id;
-                    const isGroup = item.type === "group";
+                    const isGrp = item.type === "group";
+                    const isSelected = selectIds.has(itemId);
                     return (
                       <div key={itemId} style={{ display: "flex", alignItems: "stretch", gap: 8 }}>
-                        {/* Delete */}
-                        <div onClick={() => {
-                          const label = item.code || "questo campione";
-                          if (window.confirm(`Eliminare ${label}${isGroup ? ` (${item.members.length} righe)` : ""}?`)) {
-                            if (isGroup) { item.members.forEach(m => handleDelete(m.id)); }
-                            else { handleDelete(item.id); }
-                          }
-                        }} style={{ width: 44, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", background: "#3a1a1a", border: "1px solid #e74c3c", flexShrink: 0, cursor: "pointer", fontSize: 18, WebkitUserSelect: "none", userSelect: "none" }}>
-                          🗑
-                        </div>
-                        {/* Shelf */}
-                        <div onClick={() => setTaken(prev => { const n = new Set(prev); n.has(itemId) ? n.delete(itemId) : n.add(itemId); return n; })}
-                          style={{ width: 44, borderRadius: 12, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, cursor: "pointer", background: taken.has(itemId) ? "#1a4a30" : "#22263a", border: `1px solid ${taken.has(itemId) ? "#2ecc71" : "#2e3350"}`, flexShrink: 0, WebkitUserSelect: "none", userSelect: "none", transition: "all 0.15s" }}>
-                          <div style={{ fontSize: taken.has(itemId) ? 18 : 16, lineHeight: 1 }}>{taken.has(itemId) ? "✓" : "○"}</div>
-                          <div style={{ fontSize: 8, color: taken.has(itemId) ? "#2ecc71" : "#7a8099", textAlign: "center", lineHeight: 1.2 }}>Scaffale</div>
-                        </div>
-                        {/* Card */}
-                        <div className={`sample-card ${itemFilled ? "filled" : ""}`} style={{ flex: 1 }} onClick={() => setActiveSample(item)}>
+                        {selectMode ? (
+                          <div onClick={() => setSelectIds(prev => { const n = new Set(prev); n.has(itemId) ? n.delete(itemId) : n.add(itemId); return n; })}
+                            style={{ width: 44, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", background: isSelected ? "#2a4a8a" : "#22263a", border: `1px solid ${isSelected ? "#4f8ef7" : "#2e3350"}`, flexShrink: 0, cursor: "pointer", fontSize: 20, WebkitUserSelect: "none", userSelect: "none" }}>
+                            {isSelected ? "✓" : "○"}
+                          </div>
+                        ) : (<>
+                          <div onClick={() => {
+                            if (window.confirm(`Eliminare ${item.code || "campione"}${isGrp ? ` (${item.members.length} righe)` : ""}?`)) {
+                              if (isGrp) item.members.forEach(m => handleDelete(m.id)); else handleDelete(item.id);
+                            }
+                          }} style={{ width: 44, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", background: "#3a1a1a", border: "1px solid #e74c3c", flexShrink: 0, cursor: "pointer", fontSize: 18, WebkitUserSelect: "none", userSelect: "none" }}>🗑</div>
+                          <div onClick={() => setTaken(prev => { const n = new Set(prev); n.has(itemId) ? n.delete(itemId) : n.add(itemId); return n; })}
+                            style={{ width: 44, borderRadius: 12, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, cursor: "pointer", background: taken.has(itemId) ? "#1a4a30" : "#22263a", border: `1px solid ${taken.has(itemId) ? "#2ecc71" : "#2e3350"}`, flexShrink: 0, WebkitUserSelect: "none", userSelect: "none", transition: "all 0.15s" }}>
+                            <div style={{ fontSize: taken.has(itemId) ? 18 : 16, lineHeight: 1 }}>{taken.has(itemId) ? "✓" : "○"}</div>
+                            <div style={{ fontSize: 8, color: taken.has(itemId) ? "#2ecc71" : "#7a8099", textAlign: "center", lineHeight: 1.2 }}>Scaffale</div>
+                          </div>
+                        </>)}
+                        <div className={`sample-card ${itemFilled ? "filled" : ""}`} style={{ flex: 1 }}
+                          onClick={() => selectMode ? setSelectIds(prev => { const n = new Set(prev); n.has(itemId) ? n.delete(itemId) : n.add(itemId); return n; }) : setActiveSample(item)}>
                           <div className="s-code">
                             <div className={`s-dot ${itemFilled ? "on" : ""}`} />
                             {item.code || <span style={{ color: "#f39c12" }}>⚠ Codice non trovato</span>}
-                            {isGroup && <span style={{ fontSize: 10, color: "#7a8099", marginLeft: 6 }}>×{item.members.length}</span>}
+                            {isGrp && <span style={{ fontSize: 10, color: "#7a8099", marginLeft: 6 }}>×{item.members.length}</span>}
                             {itemFilled && <span className="badge badge-ok" style={{ marginLeft: "auto" }}>✓</span>}
                           </div>
-                          <div className="s-text">
-                            {isGroup ? item.analisi : (item.tipologia_prova || item.rawText)}
-                          </div>
+                          <div className="s-text">{isGrp ? item.analisi : (item.tipologia_prova || item.rawText)}</div>
                         </div>
                       </div>
                     );
