@@ -1,6 +1,36 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { supabase, SUPABASE_CONFIGURED, TEAM_USERS, getAvatarUrl } from "./supabase.js";
 
+const SHELF_URL = "https://vkbococuppstxocdlpvl.supabase.co/rest/v1/campioni";
+const SHELF_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZrYm9jb2N1cHBzdHhvY2RscHZsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1NzM0MjYsImV4cCI6MjA5NjE0OTQyNn0.fy8wsukcKANBOBPlHDXxlXKHXoml2A7jfcsbdOtTsCo";
+
+async function fetchScaffali(ids) {
+  // ids: array of codes like "26LD01228"
+  if (!ids || ids.length === 0) return {};
+  try {
+    const idList = ids.join(",");
+    const res = await fetch(
+      `${SHELF_URL}?id_campione=in.(${idList})&select=id_campione,scaffale,a_terra,smaltimento`,
+      { headers: { apikey: SHELF_KEY, Authorization: "Bearer " + SHELF_KEY } }
+    );
+    if (!res.ok) return {};
+    const data = await res.json();
+    const map = {};
+    for (const r of data) {
+      const id = r.id_campione;
+      if (r.scaffale > 0) map[id] = { label: String(r.scaffale), color: "#4f8ef7" };
+      else if (r.a_terra === true) map[id] = { label: "T", color: "#f39c12" };
+      else if (r.smaltimento < 0) map[id] = { label: String(r.smaltimento), color: "#e74c3c" };
+      else map[id] = { label: "S", color: "#7a8099" };
+    }
+    // IDs not found → null
+    for (const id of ids) {
+      if (!(id in map)) map[id] = null;
+    }
+    return map;
+  } catch (_) { return {}; }
+}
+
 const C = {
   bg: "#0f1117", surface: "#1a1d27", card: "#22263a",
   accent: "#4f8ef7", accentDim: "#2a4a8a", success: "#2ecc71",
@@ -1092,6 +1122,7 @@ export default function App() {
   const [activeSample, setActiveSample] = useState(null);
   const [showManualCode, setShowManualCode] = useState(false);
   const [taken, setTaken] = useState(new Set());
+  const [scaffaleMap, setScaffaleMap] = useState({});
   const [selectMode, setSelectMode] = useState(false);
   const [selectIds, setSelectIds] = useState(new Set()); // local-only shelf checklist
   const [toast, setToast] = useState(null);
@@ -1105,6 +1136,9 @@ export default function App() {
     setCurrentUser(name);
     const data = await loadUserCampioni(name);
     setSamples(data);
+    // Fetch shelf positions for all loaded samples
+    const ids = [...new Set(data.map(s => s.code).filter(Boolean))];
+    fetchScaffali(ids).then(map => setScaffaleMap(map));
   }
 
   async function handleSave(updates) {
@@ -1198,6 +1232,8 @@ export default function App() {
             <button className="btn btn-secondary" onClick={async () => {
               const today = await loadUserCampioni(currentUser, true);
               setSamples(today);
+              const ids = [...new Set(today.map(s => s.code).filter(Boolean))];
+              fetchScaffali(ids).then(map => setScaffaleMap(map));
               setScreen("list");
             }}>📅 Inserimenti di oggi</button>
             <button className="btn btn-secondary" onClick={() => { setSamples([]); setScreen("list"); }}>+ Sessione vuota manuale</button>
@@ -1219,6 +1255,9 @@ export default function App() {
                       style={{ background: selectMode ? "#4f8ef7" : "#22263a", color: selectMode ? "#fff" : "#7a8099", border: "1px solid #2e3350" }}>
                       {selectMode ? "✕ Annulla" : "☑ Seleziona"}
                     </button>
+                    <button className="btn-sm" title="Aggiorna posizioni scaffale"
+                      onClick={() => { const ids = [...new Set(samples.map(s => s.code).filter(Boolean))]; fetchScaffali(ids).then(map => setScaffaleMap(map)); }}
+                      style={{ background: "#22263a", color: "#7a8099", border: "1px solid #2e3350" }}>🔄</button>
                   </div>
                 </div>
 
@@ -1267,9 +1306,15 @@ export default function App() {
                             }
                           }} style={{ width: 44, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", background: "#3a1a1a", border: "1px solid #e74c3c", flexShrink: 0, cursor: "pointer", fontSize: 18, WebkitUserSelect: "none", userSelect: "none" }}>🗑</div>
                           <div onClick={() => setTaken(prev => { const n = new Set(prev); n.has(itemId) ? n.delete(itemId) : n.add(itemId); return n; })}
-                            style={{ width: 44, borderRadius: 12, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, cursor: "pointer", background: taken.has(itemId) ? "#1a4a30" : "#22263a", border: `1px solid ${taken.has(itemId) ? "#2ecc71" : "#2e3350"}`, flexShrink: 0, WebkitUserSelect: "none", userSelect: "none", transition: "all 0.15s" }}>
-                            <div style={{ fontSize: taken.has(itemId) ? 18 : 16, lineHeight: 1 }}>{taken.has(itemId) ? "✓" : "○"}</div>
-                            <div style={{ fontSize: 8, color: taken.has(itemId) ? "#2ecc71" : "#7a8099", textAlign: "center", lineHeight: 1.2 }}>Scaffale</div>
+                            style={{ width: 52, borderRadius: 12, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, cursor: "pointer", background: taken.has(itemId) ? "#1a4a30" : "#22263a", border: `2px solid ${taken.has(itemId) ? "#2ecc71" : (scaffaleMap[item.code]?.color || "#2e3350")}`, flexShrink: 0, WebkitUserSelect: "none", userSelect: "none", transition: "all 0.15s", padding: "4px 2px" }}>
+                            {scaffaleMap[item.code] !== undefined ? (
+                              <div style={{ fontSize: scaffaleMap[item.code] ? 14 : 11, fontWeight: 700, color: taken.has(itemId) ? "#2ecc71" : (scaffaleMap[item.code]?.color || "#7a8099"), fontFamily: "'JetBrains Mono'", lineHeight: 1.1, textAlign: "center" }}>
+                                {scaffaleMap[item.code] ? scaffaleMap[item.code].label : "?"}
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: 11, color: "#2e3350" }}>…</div>
+                            )}
+                            {taken.has(itemId) && <div style={{ fontSize: 8, color: "#2ecc71", textAlign: "center", lineHeight: 1 }}>✓ preso</div>}
                           </div>
                         </>)}
                         <div className={`sample-card ${itemFilled ? "filled" : ""}`} style={{ flex: 1 }}
