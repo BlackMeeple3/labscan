@@ -981,7 +981,7 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
 
         {/* N° Articoli */}
         <div><div className="field-label">N° Articoli</div><NumInput value={d.articoli} onChange={v => set("articoli", v)} step={1} unit="pz" /></div>
-
+      </>}
 
       <div className="divider" />
 
@@ -1015,21 +1015,19 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
 
       <div className="divider" />
 
-      {/* Stufa — dentro MS */}
+      {/* Stufa */}
       <div>
-          <div className="field-label">Stufa</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {STUFE.map(s => (
-              <div key={s}
-                style={{ padding: "11px 14px", borderRadius: 10, border: `1px solid ${d.stufa === s ? "#4f8ef7" : "#2e3350"}`, background: d.stufa === s ? "#2a4a8a" : "#22263a", color: d.stufa === s ? "#4f8ef7" : "#7a8099", fontSize: 13, cursor: "pointer", fontWeight: d.stufa === s ? 700 : 500, WebkitUserSelect: "none", userSelect: "none" }}
-                onClick={() => set("stufa", d.stufa === s ? null : s)}>
-                {s}
-              </div>
-            ))}
-          </div>
+        <div className="field-label">Stufa</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {STUFE.map(s => (
+            <div key={s}
+              style={{ padding: "11px 14px", borderRadius: 10, border: `1px solid ${d.stufa === s ? "#4f8ef7" : "#2e3350"}`, background: d.stufa === s ? "#2a4a8a" : "#22263a", color: d.stufa === s ? "#4f8ef7" : "#7a8099", fontSize: 13, cursor: "pointer", fontWeight: d.stufa === s ? 700 : 500, WebkitUserSelect: "none", userSelect: "none" }}
+              onClick={() => set("stufa", d.stufa === s ? null : s)}>
+              {s}
+            </div>
+          ))}
         </div>
-
-      <div className="divider" />
+      </div>
 
       {/* Inizio contatto */}
       <div>
