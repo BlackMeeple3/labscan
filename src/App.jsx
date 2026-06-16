@@ -144,7 +144,7 @@ const ALLESTIMENTO_DEFAULTS = {
   "Single-Side (Sim. E: MPPO)": { superficie: "", volume: "" },
 };
 
-const OT_OPTIONS = ["MT", "AI", "AJ", "AT", "AM", "FDS"];
+const OT_OPTIONS = ["MT", "AI", "AJ", "AT", "AM", "FDS", "VF AT"];
 
 const STUFE = [
   "C.I. 29 (5-40 °C)",
@@ -748,8 +748,10 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
 
   // QM section open by default if tipologia_analisi is QM, else MS open
   const isQM = sample.tipologia_analisi === "QM";
+  const isScreening = sample.tipologia_analisi === "Screening/Studi";
   const [openQM, setOpenQM] = useState(isQM);
-  const [openMS, setOpenMS] = useState(!isQM);
+  const [openMS, setOpenMS] = useState(!isQM && !isScreening);
+  const [openSC, setOpenSC] = useState(isScreening);
 
   const set = (k, v) => setD(prev => ({ ...prev, [k]: v }));
   const others = allSamples.filter(s => s.id !== sample.id);
@@ -978,6 +980,39 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
 
         {/* N° Articoli */}
         <div><div className="field-label">N° Articoli</div><NumInput value={d.articoli} onChange={v => set("articoli", v)} step={1} unit="pz" /></div>
+
+
+      <div className="divider" />
+
+      {/* ── SEZIONE SCREENING ── */}
+      {isScreening && <>
+        <SectionHeader label="Screening/Studi" open={openSC} onToggle={() => setOpenSC(v => !v)} />
+        {openSC && <>
+          <div>
+            <div className="field-label">Modalità allestimento</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {ALLESTIMENTI.map(a => (
+                <div key={a}
+                  style={{ padding: "11px 14px", borderRadius: 10, border: `1px solid ${d.allestimento === a ? "#4f8ef7" : "#2e3350"}`, background: d.allestimento === a ? "#2a4a8a" : "#22263a", color: d.allestimento === a ? "#4f8ef7" : "#7a8099", fontSize: 13, cursor: "pointer", fontWeight: d.allestimento === a ? 700 : 500, WebkitUserSelect: "none", userSelect: "none" }}
+                  onClick={() => handleAllestimento(a)}>{a}</div>
+              ))}
+            </div>
+          </div>
+          <div><div className="field-label">Pesata 1</div><NumPadInput value={d.pesata} onChange={v => set("pesata", v)} unit="g" decimalDigits={4} /></div>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", WebkitUserSelect: "none" }} onClick={() => setOpenRep(v => !v)}>
+              <span style={{ fontSize: 13, color: "#7a8099" }}>{openRep ? "▼" : "▶"} Repliche (Pesata 2 / 3)</span>
+            </div>
+            {openRep && <>
+              <div style={{ marginTop: 10 }}><div className="field-label">Pesata 2</div><NumPadInput value={d.pesata2} onChange={v => set("pesata2", v)} unit="g" decimalDigits={4} /></div>
+              <div style={{ marginTop: 10 }}><div className="field-label">Pesata 3</div><NumPadInput value={d.pesata3} onChange={v => set("pesata3", v)} unit="g" decimalDigits={4} /></div>
+            </>}
+          </div>
+          <div><div className="field-label">Volume / Peso (ml/g)</div><NumPadInput value={d.volume} onChange={v => set("volume", v)} unit="ml/g" decimalDigits={2} /></div>
+          <div><div className="field-label">Superficie</div><NumPadInput value={d.superficie} onChange={v => set("superficie", v)} unit="dm²" decimalDigits={2} /></div>
+          <div><div className="field-label">Note / Oggetti</div><NotesInput value={d.note} onChange={v => set("note", v)} /></div>
+        </>}
+      </>}
 
         {/* Stufa — dentro MS */}
         <div>
