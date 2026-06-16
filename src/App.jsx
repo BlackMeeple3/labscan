@@ -747,8 +747,9 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
   const [openRep, setOpenRep] = useState(false);
 
   // QM section open by default if tipologia_analisi is QM, else MS open
-  const isQM = sample.tipologia_analisi === "QM";
-  const isScreening = sample.tipologia_analisi === "Screening/Studi";
+  const tipAN = (sample.tipologia_analisi || "").trim();
+  const isQM = tipAN === "QM";
+  const isScreening = tipAN.toLowerCase().includes("screening");
   const [openQM, setOpenQM] = useState(isQM);
   const [openMS, setOpenMS] = useState(!isQM && !isScreening);
   const [openSC, setOpenSC] = useState(isScreening);
@@ -985,8 +986,7 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
       <div className="divider" />
 
       {/* ── SEZIONE SCREENING ── */}
-      {isScreening && <>
-        <SectionHeader label="Screening/Studi" open={openSC} onToggle={() => setOpenSC(v => !v)} />
+      <SectionHeader label="Screening/Studi" open={openSC} onToggle={() => setOpenSC(v => !v)} />
         {openSC && <>
           <div>
             <div className="field-label">Modalità allestimento</div>
