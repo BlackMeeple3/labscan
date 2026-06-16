@@ -987,7 +987,7 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
 
       {/* ── SEZIONE SCREENING ── */}
       <SectionHeader label="Screening/Studi" open={openSC} onToggle={() => setOpenSC(v => !v)} />
-        {openSC && <>
+      {openSC && <>
           <div>
             <div className="field-label">Modalità allestimento</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1011,11 +1011,12 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
           <div><div className="field-label">Volume / Peso (ml/g)</div><NumPadInput value={d.volume} onChange={v => set("volume", v)} unit="ml/g" decimalDigits={2} /></div>
           <div><div className="field-label">Superficie</div><NumPadInput value={d.superficie} onChange={v => set("superficie", v)} unit="dm²" decimalDigits={2} /></div>
           <div><div className="field-label">Note / Oggetti</div><NotesInput value={d.note} onChange={v => set("note", v)} /></div>
-        </>}
       </>}
 
-        {/* Stufa — dentro MS */}
-        <div>
+      <div className="divider" />
+
+      {/* Stufa — dentro MS */}
+      <div>
           <div className="field-label">Stufa</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {STUFE.map(s => (
@@ -1027,7 +1028,6 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
             ))}
           </div>
         </div>
-      </>}
 
       <div className="divider" />
 
