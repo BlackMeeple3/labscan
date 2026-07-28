@@ -1273,11 +1273,8 @@ export default function App() {
   }
 
   async function handleUnificaSave({ items, pesata1Id, noteConcatenate, grammatura }) {
-    // Build merged data
     const analisiLabel = [...new Set(items.map(s => s.analisi || s.tipologia_prova).filter(Boolean))].join(" | ");
-    const code = items[0].code;
 
-    // Build pesate assignment
     const pesate = items.map(s => ({ id: s.id, p: s.data?.pesata, p2: s.data?.pesata2, p3: s.data?.pesata3 }));
     let p1 = "", p2 = "", p3 = "";
     if (pesata1Id) {
@@ -1286,44 +1283,36 @@ export default function App() {
       p1 = main?.p || "";
       p2 = others[0]?.p || "";
       p3 = others[1]?.p || "";
-    } else if (pesate.length > 0) {
+    } else {
       p1 = pesate[0]?.p || "";
       p2 = pesate[1]?.p || "";
       p3 = pesate[2]?.p || "";
     }
 
-    const mergedData = {
-      ...emptyData(),
-      pesata: p1, pesata2: p2, pesata3: p3,
-      grammatura: grammatura || "",
-      note: noteConcatenate,
-    };
+    const mergedData = { ...emptyData(), pesata: p1, pesata2: p2, pesata3: p3, grammatura: grammatura || "", note: noteConcatenate };
 
-    // Update all items with merged data and unified analisi label
-    const updates = items.map(s => ({ id: s.id, data: { ...mergedData } }));
-    // Also update analisi field on each sample
     setSamples(prev => prev.map(s => {
-      const upd = updates.find(u => u.id === s.id);
-      if (!upd) return s;
-      const newS = { ...s, analisi: analisiLabel, data: upd.data };
-      upsertCampione(currentUser, { ...newS, analisi: analisiLabel });
-      // Also update analisi in DB
-      if (SUPABASE_CONFIGURED && supabase) {
-        supabase.from("campioni").update({ analisi: analisiLabel, ...buildRow(newS) }).eq("id", s.id).catch(() => {});
-      }
-      return newS;
+      if (!items.find(i => i.id === s.id)) return s;
+      return { ...s, analisi: analisiLabel, data: mergedData };
     }));
+
+    // Save to Supabase
+    if (SUPABASE_CONFIGURED && supabase) {
+      for (const s of items) {
+        const newS = { ...s, analisi: analisiLabel, data: mergedData };
+        try {
+          await supabase.from("campioni").update({
+            analisi: analisiLabel,
+            pesata: normNum(p1), pesata2: normNum(p2), pesata3: normNum(p3),
+            grammatura: normNum(grammatura), note_oggetti: noteConcatenate,
+            tipo_campione: s.data?.tipo_campione || null,
+          }).eq("id", s.id);
+        } catch (_) {}
+      }
+    }
 
     setUnificaOverlay(null);
     showToast("Analisi unificate ✓");
-  }
-
-  function buildRow(s) {
-    return {
-      pesata: normNum(s.data?.pesata), pesata2: normNum(s.data?.pesata2),
-      pesata3: normNum(s.data?.pesata3), grammatura: normNum(s.data?.grammatura),
-      note_oggetti: s.data?.note, tipo_campione: s.data?.tipo_campione,
-    };
   }
 
   const grouped = useMemo(() => {
