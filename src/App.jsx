@@ -266,13 +266,6 @@ function normNum(v) {
   return isNaN(parseFloat(s)) ? v : s;
 }
 
-function normNum(v) {
-  if (v === null || v === undefined || v === "") return null;
-  const s = String(v).replace(",", ".");
-  const n = parseFloat(s);
-  return isNaN(n) ? v : s;
-}
-
 async function upsertCampione(userName, sample) {
   if (!SUPABASE_CONFIGURED) return;
   try {
