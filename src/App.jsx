@@ -1056,6 +1056,84 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
   );
 }
 
+// ── UnificaOverlay ────────────────────────────────────────────────────────────
+function UnificaOverlay({ overlay, onSave, onClose }) {
+  const { items, pesateList, hasConflict } = overlay;
+  const [pesata1Id, setPesata1Id] = useState(pesateList[0]?.id || null);
+
+  const analisiLabel = [...new Set(items.map(s => s.analisi || s.tipologia_prova).filter(Boolean))].join(" | ");
+  const grammatura = items.find(s => s.data?.grammatura)?.data?.grammatura || "";
+
+  // Build concatenated notes
+  const noteConcatenate = items
+    .filter(s => s.data?.note)
+    .map(s => `${s.analisi || s.tipologia_prova || ""}: ${s.data.note}`)
+    .join(" | ");
+
+  return (
+    <div className="overlay-bg"><div className="sheet">
+      <div className="handle" />
+      <div className="sh-title">🔗 Unifica analisi</div>
+
+      {/* Preview label */}
+      <div style={{ background: "#22263a", borderRadius: 10, padding: "12px 14px" }}>
+        <div style={{ fontSize: 11, color: "#7a8099", marginBottom: 4 }}>Etichetta risultante</div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: "#4f8ef7", lineHeight: 1.4 }}>{analisiLabel}</div>
+      </div>
+
+      {/* Items list */}
+      <div style={{ fontSize: 12, color: "#7a8099" }}>{items.length} campioni da unificare:</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {items.map(s => (
+          <div key={s.id} style={{ fontSize: 12, color: "#e8eaf0", background: "#22263a", borderRadius: 8, padding: "6px 10px" }}>
+            <span style={{ color: "#4f8ef7", fontFamily: "'JetBrains Mono'", marginRight: 8 }}>{s.code}</span>
+            {s.analisi || s.tipologia_prova}
+            {s.data?.pesata && <span style={{ color: "#2ecc71", marginLeft: 8 }}>P:{s.data.pesata}g</span>}
+          </div>
+        ))}
+      </div>
+
+      {/* Pesata conflict resolution */}
+      {hasConflict && (
+        <div>
+          <div className="field-label">⚠️ Pesate diverse — scegli Pesata 1:</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {pesateList.map(p => (
+              <div key={p.id}
+                onClick={() => setPesata1Id(p.id)}
+                style={{ padding: "10px 14px", borderRadius: 10, border: `1px solid ${pesata1Id === p.id ? "#4f8ef7" : "#2e3350"}`, background: pesata1Id === p.id ? "#2a4a8a" : "#22263a", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 12, color: "#e8eaf0" }}>{p.analisi}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#2ecc71", fontFamily: "'JetBrains Mono'" }}>{p.pesata} g</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: "#7a8099", marginTop: 4 }}>Le altre pesate andranno in Pesata 2 e 3</div>
+        </div>
+      )}
+
+      {/* Note preview */}
+      {noteConcatenate && (
+        <div>
+          <div className="field-label">Note unificate</div>
+          <div style={{ fontSize: 12, color: "#e8eaf0", background: "#22263a", borderRadius: 8, padding: "8px 12px", lineHeight: 1.5 }}>{noteConcatenate}</div>
+        </div>
+      )}
+
+      {/* Grammatura */}
+      {grammatura && (
+        <div style={{ fontSize: 12, color: "#7a8099" }}>Grammatura: <span style={{ color: "#e8eaf0" }}>{grammatura} g/dm²</span></div>
+      )}
+
+      <div className="row">
+        <button className="btn btn-secondary f1" onClick={onClose}>Annulla</button>
+        <button className="btn btn-primary f1" onClick={() => onSave({ items, pesata1Id, noteConcatenate, grammatura })}>
+          🔗 Unifica
+        </button>
+      </div>
+    </div></div>
+  );
+}
+
 // ── UserSelectScreen ──────────────────────────────────────────────────────────
 function UserSelectScreen({ onSelect }) {
   return (
@@ -1099,6 +1177,9 @@ export default function App() {
   const [taken, setTaken] = useState(new Set());
   const [scaffaleMap, setScaffaleMap] = useState({});
   const [selectMode, setSelectMode] = useState(false);
+  const [unificaMode, setUnificaMode] = useState(false);
+  const [unificaOverlay, setUnificaOverlay] = useState(null);
+  const [unificaOverlay, setUnificaOverlay] = useState(null); // { items, pesateConflict }
   const [sortByAnalisi, setSortByAnalisi] = useState(false);
   const [selectIds, setSelectIds] = useState(new Set()); // local-only shelf checklist
   const [toast, setToast] = useState(null);
@@ -1167,6 +1248,83 @@ export default function App() {
       try { await supabase.from("campioni").delete().eq("id", id); } catch (_) {}
     }
     showToast("Campione eliminato");
+  }
+
+  function handleUnifica(selectedItemIds) {
+    // Collect all raw samples from selected grouped items
+    const allRaw = [];
+    for (const item of grouped) {
+      if (!selectedItemIds.has(item.id)) continue;
+      if (item.type === "group") allRaw.push(...item.members);
+      else allRaw.push(item);
+    }
+    if (allRaw.length < 2) { showToast("Seleziona almeno 2 analisi"); return; }
+
+    // Check pesata conflicts
+    const pesate = allRaw.map(s => ({
+      analisi: s.analisi || s.tipologia_prova || s.codice_analisi || s.id,
+      pesata: s.data?.pesata, pesata2: s.data?.pesata2, pesata3: s.data?.pesata3,
+      id: s.id
+    })).filter(p => p.pesata);
+
+    const hasConflict = pesate.length > 1;
+    setUnificaOverlay({ items: allRaw, pesateList: pesate, hasConflict });
+    setSelectMode(false);
+    setSelectIds(new Set());
+  }
+
+  async function handleUnificaSave({ items, pesata1Id, noteConcatenate, grammatura }) {
+    // Build merged data
+    const analisiLabel = [...new Set(items.map(s => s.analisi || s.tipologia_prova).filter(Boolean))].join(" | ");
+    const code = items[0].code;
+
+    // Build pesate assignment
+    const pesate = items.map(s => ({ id: s.id, p: s.data?.pesata, p2: s.data?.pesata2, p3: s.data?.pesata3 }));
+    let p1 = "", p2 = "", p3 = "";
+    if (pesata1Id) {
+      const main = pesate.find(p => p.id === pesata1Id);
+      const others = pesate.filter(p => p.id !== pesata1Id && p.p);
+      p1 = main?.p || "";
+      p2 = others[0]?.p || "";
+      p3 = others[1]?.p || "";
+    } else if (pesate.length > 0) {
+      p1 = pesate[0]?.p || "";
+      p2 = pesate[1]?.p || "";
+      p3 = pesate[2]?.p || "";
+    }
+
+    const mergedData = {
+      ...emptyData(),
+      pesata: p1, pesata2: p2, pesata3: p3,
+      grammatura: grammatura || "",
+      note: noteConcatenate,
+    };
+
+    // Update all items with merged data and unified analisi label
+    const updates = items.map(s => ({ id: s.id, data: { ...mergedData } }));
+    // Also update analisi field on each sample
+    setSamples(prev => prev.map(s => {
+      const upd = updates.find(u => u.id === s.id);
+      if (!upd) return s;
+      const newS = { ...s, analisi: analisiLabel, data: upd.data };
+      upsertCampione(currentUser, { ...newS, analisi: analisiLabel });
+      // Also update analisi in DB
+      if (SUPABASE_CONFIGURED && supabase) {
+        supabase.from("campioni").update({ analisi: analisiLabel, ...buildRow(newS) }).eq("id", s.id).catch(() => {});
+      }
+      return newS;
+    }));
+
+    setUnificaOverlay(null);
+    showToast("Analisi unificate ✓");
+  }
+
+  function buildRow(s) {
+    return {
+      pesata: normNum(s.data?.pesata), pesata2: normNum(s.data?.pesata2),
+      pesata3: normNum(s.data?.pesata3), grammatura: normNum(s.data?.grammatura),
+      note_oggetti: s.data?.note, tipo_campione: s.data?.tipo_campione,
+    };
   }
 
   const grouped = useMemo(() => {
@@ -1263,6 +1421,12 @@ export default function App() {
                     <button className="btn-sm" onClick={() => setSelectIds(new Set())}>
                       Deseleziona tutti
                     </button>
+                    {selectIds.size >= 2 && (
+                      <button className="btn-sm" style={{ background: "#2a4a8a", color: "#4f8ef7", border: "1px solid #4f8ef7" }}
+                        onClick={() => handleUnifica(selectIds)}>
+                        🔗 Unifica ({selectIds.size})
+                      </button>
+                    )}
                     {selectIds.size > 0 && (
                       <button className="btn-sm" style={{ background: "#3a1a1a", color: "#e74c3c", border: "1px solid #e74c3c" }}
                         onClick={() => {
@@ -1352,6 +1516,9 @@ export default function App() {
           />
         )}
 
+        {unificaOverlay && (
+          <UnificaOverlay overlay={unificaOverlay} onSave={handleUnificaSave} onClose={() => setUnificaOverlay(null)} />
+        )}
         {activeSample && (
           <CompileOverlay sample={activeSample} allSamples={samples} onSave={handleSave} onDelete={handleDelete} onClose={() => setActiveSample(null)} />
         )}
