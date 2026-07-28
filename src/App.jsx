@@ -1179,7 +1179,6 @@ export default function App() {
   const [selectMode, setSelectMode] = useState(false);
   const [unificaMode, setUnificaMode] = useState(false);
   const [unificaOverlay, setUnificaOverlay] = useState(null);
-  const [unificaOverlay, setUnificaOverlay] = useState(null); // { items, pesateConflict }
   const [sortByAnalisi, setSortByAnalisi] = useState(false);
   const [selectIds, setSelectIds] = useState(new Set()); // local-only shelf checklist
   const [toast, setToast] = useState(null);
