@@ -260,6 +260,19 @@ async function loadUserCampioni(userName, onlyToday = false) {
   } catch (_) { return []; }
 }
 
+function normNum(v) {
+  if (!v && v !== 0) return v;
+  const s = String(v).replace(",", ".");
+  return isNaN(parseFloat(s)) ? v : s;
+}
+
+function normNum(v) {
+  if (v === null || v === undefined || v === "") return null;
+  const s = String(v).replace(",", ".");
+  const n = parseFloat(s);
+  return isNaN(n) ? v : s;
+}
+
 async function upsertCampione(userName, sample) {
   if (!SUPABASE_CONFIGURED) return;
   try {
@@ -271,7 +284,7 @@ async function upsertCampione(userName, sample) {
       alert("Limite giornaliero raggiunto: 500 campioni per utente al giorno.");
       return;
     }
-    const row = { id: sample.id, user_name: userName, codice_id: sample.code, richiedente: sample.richiedente || null, descrizione_campione: sample.rawText, codice_analisi: sample.codice_analisi || null, analisi: sample.analisi || null, prep_qm: sample.prep_qm || null, valore: sample.valore || null, nota_param: sample.nota_param || null, tipologia_prova: sample.tipologia_prova || null, tipologia_analisi: sample.tipologia_analisi || null, modalita_allestimento: sample.data?.allestimento || null, volume_peso: sample.data?.volume || null, superficie: sample.data?.superficie || null, stufa: sample.data?.stufa || null, note_oggetti: sample.data?.note || null, inizio_contatto: sample.data?.inizio_contatto || null, numero_articoli: sample.data?.articoli || null, ot: sample.data?.ot || null, pesata: sample.data?.pesata || null, pesata2: sample.data?.pesata2 || null, pesata3: sample.data?.pesata3 || null, grammatura: sample.data?.grammatura || null, tipo_campione: sample.data?.tipo_campione || null };
+    const row = { id: sample.id, user_name: userName, codice_id: sample.code, richiedente: sample.richiedente || null, descrizione_campione: sample.rawText, codice_analisi: sample.codice_analisi || null, analisi: sample.analisi || null, prep_qm: sample.prep_qm || null, valore: sample.valore || null, nota_param: sample.nota_param || null, tipologia_prova: sample.tipologia_prova || null, tipologia_analisi: sample.tipologia_analisi || null, modalita_allestimento: sample.data?.allestimento || null, volume_peso: sample.data?.volume || null, superficie: normNum(sample.data?.superficie) || null, stufa: sample.data?.stufa || null, note_oggetti: sample.data?.note || null, inizio_contatto: sample.data?.inizio_contatto || null, numero_articoli: sample.data?.articoli || null, ot: sample.data?.ot || null, pesata: normNum(sample.data?.pesata) || null, pesata2: normNum(sample.data?.pesata2) || null, pesata3: normNum(sample.data?.pesata3) || null, grammatura: normNum(sample.data?.grammatura) || null, tipo_campione: sample.data?.tipo_campione || null };
     await supabase.from("campioni").upsert(row, { onConflict: "id" });
   } catch (_) {}
 }
@@ -947,130 +960,64 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
       <InfoPanel sample={sample} />
       <div className="divider" />
 
-      {/* ── SEZIONE QM ── */}
-      <SectionHeader label="QM" open={openQM} onToggle={() => setOpenQM(v => !v)} />
-      {openQM && <>
-        {/* Pesata 1 — 4 decimali */}
-        <div><div className="field-label">Pesata 1</div><NumPadInput value={d.pesata} onChange={v => set("pesata", v)} unit="g" decimalDigits={4} /></div>
-
-        {/* Repliche — collassabili */}
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", WebkitUserSelect: "none" }}
-            onClick={() => setOpenRep(v => !v)}>
-            <span style={{ fontSize: 13, color: "#7a8099" }}>{openRep ? "▼" : "▶"} Repliche (Pesata 2 / 3)</span>
-          </div>
-          {openRep && <>
-            <div style={{ marginTop: 10 }}><div className="field-label">Pesata 2</div><NumPadInput value={d.pesata2} onChange={v => set("pesata2", v)} unit="g" decimalDigits={4} /></div>
-            <div style={{ marginTop: 10 }}><div className="field-label">Pesata 3</div><NumPadInput value={d.pesata3} onChange={v => set("pesata3", v)} unit="g" decimalDigits={4} /></div>
-          </>}
-        </div>
-
-        {/* Grammatura */}
-        <div><div className="field-label">Grammatura</div><NumPadInput value={d.grammatura} onChange={v => set("grammatura", v)} unit="g/dm²" decimalDigits={4} /></div>
-
-        {/* Tipo campione */}
-        <div>
-          <div className="field-label">Tipo campione</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {["Tappo / oggetto", "Contenitore ≥500ml", "-"].map(t => (
-              <div key={t}
-                style={{ padding: "11px 14px", borderRadius: 10, border: `1px solid ${d.tipo_campione === t ? "#4f8ef7" : "#2e3350"}`, background: d.tipo_campione === t ? "#2a4a8a" : "#22263a", color: d.tipo_campione === t ? "#4f8ef7" : "#7a8099", fontSize: 13, cursor: "pointer", fontWeight: d.tipo_campione === t ? 700 : 500, WebkitUserSelect: "none", userSelect: "none" }}
-                onClick={() => set("tipo_campione", d.tipo_campione === t ? null : t)}>
-                {t}
-              </div>
-            ))}
-          </div>
-        </div>
-      </>}
-
-      <div className="divider" />
-
-      {/* ── SEZIONE MS ── */}
-      <SectionHeader label="MS" open={openMS} onToggle={() => setOpenMS(v => !v)} />
-      {openMS && <>
-        {/* Allestimento */}
-        <div>
-          <div className="field-label">Modalità allestimento</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {ALLESTIMENTI.map(a => (
-              <div key={a}
-                style={{ padding: "11px 14px", borderRadius: 10, border: `1px solid ${d.allestimento === a ? "#4f8ef7" : "#2e3350"}`, background: d.allestimento === a ? "#2a4a8a" : "#22263a", color: d.allestimento === a ? "#4f8ef7" : "#7a8099", fontSize: 13, cursor: "pointer", fontWeight: d.allestimento === a ? 700 : 500, WebkitUserSelect: "none", userSelect: "none" }}
-                onClick={() => handleAllestimento(a)}>
-                {a}
-              </div>
-            ))}
-          </div>
-          {d.allestimento && <div style={{ fontSize: 11, color: "#7a8099", marginTop: 4 }}>Tocca di nuovo per deselezionare</div>}
-        </div>
-
-        {/* Volume/Peso */}
-        <div><div className="field-label">Volume / Peso (ml/g)</div><NumPadInput value={d.volume} onChange={v => set("volume", v)} unit="ml/g" decimalDigits={2} /></div>
-
-        {/* Superficie */}
-        <div><div className="field-label">Superficie</div><NumPadInput value={d.superficie} onChange={v => set("superficie", v)} unit="dm²" decimalDigits={2} /></div>
-
-        {/* N° Articoli */}
-        <div><div className="field-label">N° Articoli</div><NumInput value={d.articoli} onChange={v => set("articoli", v)} step={1} unit="pz" /></div>
-      </>}
-
-      <div className="divider" />
-
-      {/* ── SEZIONE SCREENING ── */}
-      <SectionHeader label="Screening/Studi" open={openSC} onToggle={() => setOpenSC(v => !v)} />
-      {openSC && <>
-          {/* Inizio contatto */}
-          <div>
-            <div className="field-label">Inizio contatto</div>
-            <div className="row" style={{ alignItems: "center" }}>
-              <input type="date" value={d.inizio_contatto || ""} onChange={e => set("inizio_contatto", e.target.value)}
-                style={{ flex: 1, background: "#22263a", border: "1px solid #2e3350", borderRadius: 10, color: "#e8eaf0", fontFamily: "'JetBrains Mono', monospace", fontSize: 16, padding: "12px 14px", outline: "none" }} />
-              <button className="btn-sm" onClick={() => set("inizio_contatto", new Date().toISOString().split("T")[0])}
-                style={{ flexShrink: 0, marginLeft: 8 }}>📅 Oggi</button>
-            </div>
-          </div>
-          {/* Superficie */}
-          <div><div className="field-label">Superficie</div><NumPadInput value={d.superficie} onChange={v => set("superficie", v)} unit="dm²" decimalDigits={2} /></div>
-          {/* Pesata */}
-          <div><div className="field-label">Pesata 1</div><NumPadInput value={d.pesata} onChange={v => set("pesata", v)} unit="g" decimalDigits={4} /></div>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", WebkitUserSelect: "none" }} onClick={() => setOpenRep(v => !v)}>
-              <span style={{ fontSize: 13, color: "#7a8099" }}>{openRep ? "▼" : "▶"} Repliche (Pesata 2 / 3)</span>
-            </div>
-            {openRep && <>
-              <div style={{ marginTop: 10 }}><div className="field-label">Pesata 2</div><NumPadInput value={d.pesata2} onChange={v => set("pesata2", v)} unit="g" decimalDigits={4} /></div>
-              <div style={{ marginTop: 10 }}><div className="field-label">Pesata 3</div><NumPadInput value={d.pesata3} onChange={v => set("pesata3", v)} unit="g" decimalDigits={4} /></div>
-            </>}
-          </div>
-          {/* Allestimento */}
-          <div>
-            <div className="field-label">Modalità allestimento</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {ALLESTIMENTI.map(a => (
-                <div key={a}
-                  style={{ padding: "11px 14px", borderRadius: 10, border: `1px solid ${d.allestimento === a ? "#4f8ef7" : "#2e3350"}`, background: d.allestimento === a ? "#2a4a8a" : "#22263a", color: d.allestimento === a ? "#4f8ef7" : "#7a8099", fontSize: 13, cursor: "pointer", fontWeight: d.allestimento === a ? 700 : 500, WebkitUserSelect: "none", userSelect: "none" }}
-                  onClick={() => handleAllestimento(a)}>{a}</div>
-              ))}
-            </div>
-          </div>
-          {/* Note */}
-          <div><div className="field-label">Note / Oggetti</div><NotesInput value={d.note} onChange={v => set("note", v)} /></div>
-      </>}
-
-      <div className="divider" />
-
-      {/* OT — sempre visibile */}
+      {/* Pesata 1 — max 10g, 4 decimali */}
       <div>
-        <div className="field-label">OT — Operatore Tecnico</div>
-        <div className="chip-row" style={{ marginBottom: 8 }}>
-          {OT_OPTIONS.map(o => (
-            <div key={o} className={`chip ${d.ot === o ? "on" : ""}`} style={{ flex: "none", minWidth: "auto", padding: "10px 16px" }}
-              onClick={() => set("ot", d.ot === o ? "" : o)}>{o}</div>
+        <div className="field-label">Pesata 1</div>
+        <NumPadInput value={d.pesata} onChange={v => {
+          const n = parseFloat(v.replace(",", "."));
+          if (!isNaN(n) && n > 10) { showToast("⚠ Pesata max 10g"); return; }
+          set("pesata", v);
+        }} unit="g" decimalDigits={4} />
+      </div>
+
+      {/* Repliche */}
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", WebkitUserSelect: "none" }}
+          onClick={() => setOpenRep(v => !v)}>
+          <span style={{ fontSize: 13, color: "#7a8099" }}>{openRep ? "▼" : "▶"} Repliche (Pesata 2 / 3)</span>
+        </div>
+        {openRep && <>
+          <div style={{ marginTop: 10 }}>
+            <div className="field-label">Pesata 2</div>
+            <NumPadInput value={d.pesata2} onChange={v => {
+              const n = parseFloat(v.replace(",", "."));
+              if (!isNaN(n) && n > 10) { showToast("⚠ Pesata max 10g"); return; }
+              set("pesata2", v);
+            }} unit="g" decimalDigits={4} />
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <div className="field-label">Pesata 3</div>
+            <NumPadInput value={d.pesata3} onChange={v => {
+              const n = parseFloat(v.replace(",", "."));
+              if (!isNaN(n) && n > 10) { showToast("⚠ Pesata max 10g"); return; }
+              set("pesata3", v);
+            }} unit="g" decimalDigits={4} />
+          </div>
+        </>}
+      </div>
+
+      {/* Grammatura — auto-propagata per stesso ID */}
+      <div>
+        <div className="field-label">Grammatura <span style={{ fontSize: 10, color: "#7a8099" }}>(auto su stesso ID)</span></div>
+        <NumPadInput value={d.grammatura} onChange={v => set("grammatura", v)} unit="g/dm²" decimalDigits={4} />
+      </div>
+
+      {/* Tipo campione */}
+      <div>
+        <div className="field-label">Tipo campione</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {["Tappo / oggetto", "Contenitore ≥500ml", "-"].map(t => (
+            <div key={t}
+              style={{ padding: "11px 14px", borderRadius: 10, border: `1px solid ${d.tipo_campione === t ? "#4f8ef7" : "#2e3350"}`, background: d.tipo_campione === t ? "#2a4a8a" : "#22263a", color: d.tipo_campione === t ? "#4f8ef7" : "#7a8099", fontSize: 13, cursor: "pointer", fontWeight: d.tipo_campione === t ? 700 : 500, WebkitUserSelect: "none", userSelect: "none" }}
+              onClick={() => set("tipo_campione", d.tipo_campione === t ? null : t)}>
+              {t}
+            </div>
           ))}
         </div>
-        <input type="text" value={d.ot || ""} onChange={e => set("ot", e.target.value)}
-          placeholder="Oppure scrivi sigla personalizzata…"
-          style={{ background: "#22263a", border: "1px solid #2e3350", borderRadius: 10, color: "#e8eaf0", fontFamily: "'JetBrains Mono', monospace", fontSize: 15, padding: "10px 14px", width: "100%", outline: "none" }} />
       </div>
+
+      {/* Note */}
+      <div><div className="field-label">Note</div><NotesInput value={d.note} onChange={v => set("note", v)} /></div>
 
       <div className="divider" />
       <div className="row">
@@ -1124,6 +1071,7 @@ export default function App() {
   const [taken, setTaken] = useState(new Set());
   const [scaffaleMap, setScaffaleMap] = useState({});
   const [selectMode, setSelectMode] = useState(false);
+  const [sortByAnalisi, setSortByAnalisi] = useState(false);
   const [selectIds, setSelectIds] = useState(new Set()); // local-only shelf checklist
   const [toast, setToast] = useState(null);
 
@@ -1144,7 +1092,13 @@ export default function App() {
   async function handleSave(updates) {
     setSamples(prev => {
       const m = new Map(updates.map(u => [u.id, u.data]));
-      // For group saves, u.id is the group key "code|analisi" — apply to all matching members
+      // Collect grammatura values by code for auto-propagation
+      const grammaturaByCode = new Map();
+      for (const u of updates) {
+        const s = prev.find(x => x.id === u.id) || (u.id.includes("|") ? { code: u.id.split("|")[0] } : null);
+        const code = s?.code;
+        if (code && u.data?.grammatura) grammaturaByCode.set(code, u.data.grammatura);
+      }
       const next = prev.map(s => {
         // Direct match by ID
         if (m.has(s.id)) {
@@ -1157,6 +1111,15 @@ export default function App() {
           const groupKey = s.code + "|" + s.analisi;
           if (m.has(groupKey)) {
             const newS = { ...s, data: m.get(groupKey) };
+            upsertCampione(currentUser, newS);
+            return newS;
+          }
+        }
+        // Grammatura auto-propagation by same code
+        if (s.code && grammaturaByCode.has(s.code) && !m.has(s.id) && !(s.code && s.analisi && m.has(s.code + "|" + s.analisi))) {
+          const newGramm = grammaturaByCode.get(s.code);
+          if (s.data?.grammatura !== newGramm) {
+            const newS = { ...s, data: { ...s.data, grammatura: newGramm } };
             upsertCampione(currentUser, newS);
             return newS;
           }
@@ -1178,7 +1141,13 @@ export default function App() {
     showToast("Campione eliminato");
   }
 
-  const grouped = useMemo(() => groupSamples(samples), [samples]);
+  const grouped = useMemo(() => {
+    const g = groupSamples(samples);
+    if (sortByAnalisi) {
+      return [...g].sort((a, b) => (a.analisi || a.tipologia_prova || "").localeCompare(b.analisi || b.tipologia_prova || ""));
+    }
+    return [...g].sort((a, b) => (a.code || "").localeCompare(b.code || ""));
+  }, [samples, sortByAnalisi]);
   const filled = grouped.filter(g => isDataFilled(g.data)).length;
 
   if (!appReady) return (
@@ -1251,6 +1220,10 @@ export default function App() {
                     <div style={{ fontSize: 11, color: taken.size > 0 ? "#2ecc71" : "#7a8099", fontFamily: "'JetBrains Mono'" }}>
                       📦 {taken.size}/{grouped.length}
                     </div>
+                    <button className="btn-sm" onClick={() => setSortByAnalisi(v => !v)}
+                      style={{ background: sortByAnalisi ? "#2a4a8a" : "#22263a", color: sortByAnalisi ? "#4f8ef7" : "#7a8099", border: "1px solid #2e3350" }}>
+                      {sortByAnalisi ? "⇅ Analisi" : "⇅ Codice"}
+                    </button>
                     <button className="btn-sm" onClick={() => { setSelectMode(v => !v); setSelectIds(new Set()); }}
                       style={{ background: selectMode ? "#4f8ef7" : "#22263a", color: selectMode ? "#fff" : "#7a8099", border: "1px solid #2e3350" }}>
                       {selectMode ? "✕ Annulla" : "☑ Seleziona"}
