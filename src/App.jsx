@@ -202,7 +202,7 @@ function extractSamplesFromLines(text) {
     });
 }
 function emptyData() { return { pesata: "", pesata2: "", pesata3: "", grammatura: "", tipo_campione: null, superficie: "", allestimento: null, volume: "", articoli: "", stufa: null, inizio_contatto: "", ot: "", note: "" }; }
-function isDataFilled(d) { return d && (d.pesata || d.superficie || d.allestimento || d.stufa || d.articoli); }
+function isDataFilled(d) { return d && !!(d.pesata || d.pesata2 || d.pesata3); }
 // ── Group QM samples by code + analisi ───────────────────────────────────────
 function groupSamples(samples) {
   const groups = new Map();
@@ -781,6 +781,7 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
   const [currentConfirm, setCurrentConfirm] = useState(null);
   const [defaultConfirm, setDefaultConfirm] = useState(null);
   const [openRep, setOpenRep] = useState(false);
+  const [propagateFields, setPropagateFields] = useState({ pesata: true, nota: false });
 
   // QM section open by default if tipologia_analisi is QM, else MS open
   const tipAN = (sample.tipologia_analisi || "").trim();
@@ -819,9 +820,24 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
   function applyPropagation() {
     if (!selected.length) { onClose(); return; }
     const targets = selected.map(id => allSamples.find(s => s.id === id)).filter(Boolean);
-    // Empty targets — apply directly
-    onSave(targets.filter(s => !isDataFilled(s.data)).map(s => ({ id: s.id, data: { ...d } })));
-    // Filled targets — go to field-by-field confirm
+
+    // Build partial data based on selected fields
+    function buildPartialData(targetData) {
+      const partial = { ...targetData };
+      if (propagateFields.pesata) {
+        partial.pesata = d.pesata;
+        partial.pesata2 = d.pesata2;
+        partial.pesata3 = d.pesata3;
+        partial.grammatura = d.grammatura;
+        partial.tipo_campione = d.tipo_campione;
+      }
+      if (propagateFields.nota) {
+        partial.note = d.note;
+      }
+      return partial;
+    }
+
+    onSave(targets.filter(s => !isDataFilled(s.data)).map(s => ({ id: s.id, data: buildPartialData(s.data || emptyData()) })));
     const q = targets.filter(s => isDataFilled(s.data));
     if (q.length) { setConfirmQueue(q); setCurrentConfirm(q[0]); setPhase("confirm"); } else onClose();
   }
@@ -906,6 +922,24 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
   if (phase === "propagate") return (
     <div className="overlay-bg" onClick={e => e.target === e.currentTarget && onClose()}><div className="sheet">
       <div className="handle" /><div className="sh-title">Applica ad altri?</div>
+
+      {/* Field selection */}
+      <div style={{ background: "#22263a", borderRadius: 10, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ fontSize: 12, color: "#7a8099", marginBottom: 2 }}>Cosa vuoi copiare?</div>
+        {[
+          { key: "pesata", label: "Pesata (1/2/3 + grammatura + tipo campione)" },
+          { key: "nota", label: "Note" },
+        ].map(f => (
+          <div key={f.key} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
+            onClick={() => setPropagateFields(prev => ({ ...prev, [f.key]: !prev[f.key] }))}>
+            <div style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${propagateFields[f.key] ? "#4f8ef7" : "#2e3350"}`, background: propagateFields[f.key] ? "#4f8ef7" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 13, flexShrink: 0 }}>
+              {propagateFields[f.key] ? "✓" : ""}
+            </div>
+            <span style={{ fontSize: 13, color: "#e8eaf0" }}>{f.label}</span>
+          </div>
+        ))}
+      </div>
+
       {others.length === 0
         ? <div style={{ color: "#7a8099", fontSize: 13, textAlign: "center", padding: "16px 0" }}>Nessun altro campione</div>
         : <div className="prop-list">{groupSamples(others).map(item => {
@@ -942,7 +976,8 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
       }
       <div className="row">
         <button className="btn btn-secondary f1" onClick={onClose}>Salta</button>
-        <button className="btn btn-primary f1" onClick={applyPropagation}>Applica{selected.length ? ` (${selected.length})` : ""}</button>
+        <button className="btn btn-primary f1" disabled={!propagateFields.pesata && !propagateFields.nota}
+          onClick={applyPropagation}>Applica{selected.length ? ` (${selected.length})` : ""}</button>
       </div>
     </div></div>
   );
@@ -1191,13 +1226,6 @@ export default function App() {
                 📋 Continua — {grouped.length} campioni ({filled} compilati)
               </button>
             )}
-            <button className="btn btn-secondary" onClick={async () => {
-              const today = await loadUserCampioni(currentUser, true);
-              setSamples(today);
-              const ids = [...new Set(today.map(s => s.code).filter(Boolean))];
-              fetchScaffali(ids).then(map => setScaffaleMap(map));
-              setScreen("list");
-            }}>📅 Inserimenti di oggi</button>
             <button className="btn btn-secondary" onClick={() => { setSamples([]); setScreen("list"); }}>+ Sessione vuota manuale</button>
           </div>
         )}
