@@ -1068,7 +1068,7 @@ function UnificaOverlay({ overlay, onSave, onClose }) {
   const noteConcatenate = items
     .filter(s => s.data?.note)
     .map(s => `${s.analisi || s.tipologia_prova || ""}: ${s.data.note}`)
-    .join(" | ");
+    .join("; ");
 
   return (
     <div className="overlay-bg"><div className="sheet">
