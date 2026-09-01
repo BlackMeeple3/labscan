@@ -1034,7 +1034,7 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
       <div>
         <div className="field-label">Tipo campione</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {["Tappo / oggetto", "Contenitore ≥500ml", "-"].map(t => (
+          {["-", "Tappo/Oggetto", "Contenitore ≥500ml"].map(t => (
             <div key={t}
               style={{ padding: "11px 14px", borderRadius: 10, border: `1px solid ${d.tipo_campione === t ? "#4f8ef7" : "#2e3350"}`, background: d.tipo_campione === t ? "#2a4a8a" : "#22263a", color: d.tipo_campione === t ? "#4f8ef7" : "#7a8099", fontSize: 13, cursor: "pointer", fontWeight: d.tipo_campione === t ? 700 : 500, WebkitUserSelect: "none", userSelect: "none" }}
               onClick={() => set("tipo_campione", d.tipo_campione === t ? null : t)}>
