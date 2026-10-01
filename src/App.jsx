@@ -1203,30 +1203,39 @@ export default function App() {
 
   async function handleSave(updates) {
     const m = new Map(updates.map(u => [u.id, u.data]));
-    const grammaturaByCode = new Map();
+    const autoByCode = new Map(); // grammatura + tipo_campione auto-propagated by code
     let nextSamples = [];
 
     setSamples(prev => {
       for (const u of updates) {
         const s = prev.find(x => x.id === u.id) || (u.id.includes("|") ? { code: u.id.split("|")[0] } : null);
-        if (s?.code && u.data?.grammatura) grammaturaByCode.set(s.code, u.data.grammatura);
+        if (s?.code) {
+          const existing = autoByCode.get(s.code) || {};
+          if (u.data?.grammatura) existing.grammatura = u.data.grammatura;
+          if (u.data?.tipo_campione) existing.tipo_campione = u.data.tipo_campione;
+          autoByCode.set(s.code, existing);
+        }
       }
       nextSamples = prev.map(s => {
         if (m.has(s.id)) return { ...s, data: { ...s.data, ...m.get(s.id) } };
         if (s.code && s.analisi && m.has(s.code + "|" + s.analisi)) return { ...s, data: { ...s.data, ...m.get(s.code + "|" + s.analisi) } };
-        if (s.code && grammaturaByCode.has(s.code) && s.data?.grammatura !== grammaturaByCode.get(s.code))
-          return { ...s, data: { ...s.data, grammatura: grammaturaByCode.get(s.code) } };
+        // Auto-propagate grammatura and tipo_campione to all same-code samples
+        if (s.code && autoByCode.has(s.code)) {
+          const auto = autoByCode.get(s.code);
+          const changed = (auto.grammatura && s.data?.grammatura !== auto.grammatura)
+            || (auto.tipo_campione && s.data?.tipo_campione !== auto.tipo_campione);
+          if (changed) return { ...s, data: { ...s.data, ...auto } };
+        }
         return s;
       });
       return nextSamples;
     });
 
-    // Save to Supabase after state settles
     await new Promise(r => setTimeout(r, 50));
     for (const s of nextSamples) {
       const changed = m.has(s.id)
         || (s.code && s.analisi && m.has(s.code + "|" + s.analisi))
-        || (s.code && grammaturaByCode.has(s.code));
+        || (s.code && autoByCode.has(s.code));
       if (changed) await upsertCampione(currentUser, s);
     }
     showToast("Salvato ✓");
