@@ -1202,32 +1202,31 @@ export default function App() {
   async function handleSave(updates) {
     const m = new Map(updates.map(u => [u.id, u.data]));
     const grammaturaByCode = new Map();
+    let nextSamples = [];
 
     setSamples(prev => {
-      // Collect grammatura for propagation
       for (const u of updates) {
         const s = prev.find(x => x.id === u.id) || (u.id.includes("|") ? { code: u.id.split("|")[0] } : null);
         if (s?.code && u.data?.grammatura) grammaturaByCode.set(s.code, u.data.grammatura);
       }
-      return prev.map(s => {
-        if (m.has(s.id)) return { ...s, data: m.get(s.id) };
-        if (s.code && s.analisi && m.has(s.code + "|" + s.analisi)) return { ...s, data: m.get(s.code + "|" + s.analisi) };
+      nextSamples = prev.map(s => {
+        if (m.has(s.id)) return { ...s, data: { ...s.data, ...m.get(s.id) } };
+        if (s.code && s.analisi && m.has(s.code + "|" + s.analisi)) return { ...s, data: { ...s.data, ...m.get(s.code + "|" + s.analisi) } };
         if (s.code && grammaturaByCode.has(s.code) && s.data?.grammatura !== grammaturaByCode.get(s.code))
           return { ...s, data: { ...s.data, grammatura: grammaturaByCode.get(s.code) } };
         return s;
       });
+      return nextSamples;
     });
 
-    // Upsert to Supabase after state settles
-    await new Promise(r => setTimeout(r, 30));
-    setSamples(current => {
-      for (const s of current) {
-        const changed = m.has(s.id) || (s.code && s.analisi && m.has(s.code + "|" + s.analisi))
-          || (s.code && grammaturaByCode.has(s.code));
-        if (changed) upsertCampione(currentUser, s);
-      }
-      return current;
-    });
+    // Save to Supabase after state settles
+    await new Promise(r => setTimeout(r, 50));
+    for (const s of nextSamples) {
+      const changed = m.has(s.id)
+        || (s.code && s.analisi && m.has(s.code + "|" + s.analisi))
+        || (s.code && grammaturaByCode.has(s.code));
+      if (changed) await upsertCampione(currentUser, s);
+    }
     showToast("Salvato ✓");
   }
 
