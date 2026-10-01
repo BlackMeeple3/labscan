@@ -202,6 +202,8 @@ function extractSamplesFromLines(text) {
     });
 }
 function emptyData() { return { pesata: "", pesata2: "", pesata3: "", grammatura: "", tipo_campione: null, superficie: "", allestimento: null, volume: "", articoli: "", stufa: null, inizio_contatto: "", ot: "", note: "" }; }
+function hasAnyData(d) { return d && Object.values(d).some(v => v !== null && v !== "" && v !== undefined); }
+
 function isDataFilled(d) { return d && !!(d.pesata || d.pesata2 || d.pesata3); }
 // ── Group QM samples by code + analisi ───────────────────────────────────────
 function groupSamples(samples) {
@@ -220,7 +222,7 @@ function groupSamples(samples) {
           tipologia_analisi: s.tipologia_analisi,
           valore: s.valore, nota_param: s.nota_param, prep_qm: s.prep_qm,
           codiciAnalisi: [], tipiProva: [], members: [],
-          data: isDataFilled(s.data) ? { ...s.data } : null,
+          data: hasAnyData(s.data) ? { ...s.data } : null,
         };
         groups.set(key, g); result.push(g);
       }
@@ -228,7 +230,7 @@ function groupSamples(samples) {
       g.members.push(s);
       if (s.codice_analisi && !g.codiciAnalisi.includes(s.codice_analisi)) g.codiciAnalisi.push(s.codice_analisi);
       if (s.tipologia_prova && !g.tipiProva.includes(s.tipologia_prova)) g.tipiProva.push(s.tipologia_prova);
-      if (!g.data && isDataFilled(s.data)) g.data = { ...s.data };
+      if (!g.data && hasAnyData(s.data)) g.data = { ...s.data };
     } else {
       result.push({ ...s, type: "single" });
     }
@@ -839,8 +841,8 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
       return partial;
     }
 
-    onSave(targets.filter(s => !isDataFilled(s.data)).map(s => ({ id: s.id, data: buildPartialData(s.data || emptyData()) })));
-    const q = targets.filter(s => isDataFilled(s.data));
+    onSave(targets.filter(s => !hasAnyData(s.data)).map(s => ({ id: s.id, data: buildPartialData(s.data || emptyData()) })));
+    const q = targets.filter(s => hasAnyData(s.data));
     if (q.length) { setConfirmQueue(q); setCurrentConfirm(q[0]); setPhase("confirm"); } else onClose();
   }
 
