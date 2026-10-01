@@ -792,7 +792,9 @@ function CompileOverlay({ sample, onSave, onClose, onDelete, allSamples }) {
   const [openSC, setOpenSC] = useState(isScreening);
 
   const set = (k, v) => setD(prev => ({ ...prev, [k]: v }));
-  const others = allSamples.filter(s => s.id !== sample.id);
+  const others = allSamples
+    .filter(s => s.id !== sample.id && !(sample.type === "group" && sample.members?.find(m => m.id === s.id)))
+    .sort((a, b) => (a.code || "").localeCompare(b.code || ""));
 
   function handleAllestimento(a) {
     if (d.allestimento === a) { set("allestimento", null); set("volume", ""); return; }
@@ -1198,43 +1200,33 @@ export default function App() {
   }
 
   async function handleSave(updates) {
+    const m = new Map(updates.map(u => [u.id, u.data]));
+    const grammaturaByCode = new Map();
+
     setSamples(prev => {
-      const m = new Map(updates.map(u => [u.id, u.data]));
-      // Collect grammatura values by code for auto-propagation
-      const grammaturaByCode = new Map();
+      // Collect grammatura for propagation
       for (const u of updates) {
         const s = prev.find(x => x.id === u.id) || (u.id.includes("|") ? { code: u.id.split("|")[0] } : null);
-        const code = s?.code;
-        if (code && u.data?.grammatura) grammaturaByCode.set(code, u.data.grammatura);
+        if (s?.code && u.data?.grammatura) grammaturaByCode.set(s.code, u.data.grammatura);
       }
-      const next = prev.map(s => {
-        // Direct match by ID
-        if (m.has(s.id)) {
-          const newS = { ...s, data: m.get(s.id) };
-          upsertCampione(currentUser, newS);
-          return newS;
-        }
-        // Group match: check if any update key matches "code|analisi"
-        if (s.code && s.analisi) {
-          const groupKey = s.code + "|" + s.analisi;
-          if (m.has(groupKey)) {
-            const newS = { ...s, data: m.get(groupKey) };
-            upsertCampione(currentUser, newS);
-            return newS;
-          }
-        }
-        // Grammatura auto-propagation by same code
-        if (s.code && grammaturaByCode.has(s.code) && !m.has(s.id) && !(s.code && s.analisi && m.has(s.code + "|" + s.analisi))) {
-          const newGramm = grammaturaByCode.get(s.code);
-          if (s.data?.grammatura !== newGramm) {
-            const newS = { ...s, data: { ...s.data, grammatura: newGramm } };
-            upsertCampione(currentUser, newS);
-            return newS;
-          }
-        }
+      return prev.map(s => {
+        if (m.has(s.id)) return { ...s, data: m.get(s.id) };
+        if (s.code && s.analisi && m.has(s.code + "|" + s.analisi)) return { ...s, data: m.get(s.code + "|" + s.analisi) };
+        if (s.code && grammaturaByCode.has(s.code) && s.data?.grammatura !== grammaturaByCode.get(s.code))
+          return { ...s, data: { ...s.data, grammatura: grammaturaByCode.get(s.code) } };
         return s;
       });
-      return next;
+    });
+
+    // Upsert to Supabase after state settles
+    await new Promise(r => setTimeout(r, 30));
+    setSamples(current => {
+      for (const s of current) {
+        const changed = m.has(s.id) || (s.code && s.analisi && m.has(s.code + "|" + s.analisi))
+          || (s.code && grammaturaByCode.has(s.code));
+        if (changed) upsertCampione(currentUser, s);
+      }
+      return current;
     });
     showToast("Salvato ✓");
   }
