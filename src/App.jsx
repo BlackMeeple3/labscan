@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { supabase, SUPABASE_CONFIGURED, TEAM_USERS, getAvatarUrl } from "./supabase.js";
+import { supabase, SUPABASE_CONFIGURED } from "./supabase.js";
 
 const SHELF_URL = "https://vkbococuppstxocdlpvl.supabase.co/rest/v1/campioni";
 const SHELF_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZrYm9jb2N1cHBzdHhvY2RscHZsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1NzM0MjYsImV4cCI6MjA5NjE0OTQyNn0.fy8wsukcKANBOBPlHDXxlXKHXoml2A7jfcsbdOtTsCo";
@@ -142,13 +142,6 @@ const css = `
   .word.picked { background: #2a4a8a; color: #4f8ef7; }
 
   /* User selection screen */
-  .user-select-screen { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 32px; padding: 40px 20px; }
-  .user-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 24px; max-width: 340px; }
-  .user-avatar-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; }
-  .user-avatar-wrap:active { transform: scale(0.93); }
-  .user-avatar { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid #2e3350; transition: border-color 0.15s, transform 0.15s; background: #22263a; display: flex; align-items: center; justify-content: center; font-size: 32px; overflow: hidden; }
-  .user-avatar:active { border-color: #4f8ef7; }
-  .user-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
   .user-name { font-size: 13px; font-weight: 600; color: #e8eaf0; }
 `;
 
@@ -1143,41 +1136,10 @@ function UnificaOverlay({ overlay, onSave, onClose }) {
   );
 }
 
-// ── UserSelectScreen ──────────────────────────────────────────────────────────
-function UserSelectScreen({ onSelect }) {
-  return (
-    <div className="user-select-screen">
-      <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 42, marginBottom: 8 }}>🧪</div>
-        <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: "#4f8ef7" }}>LAB·SCAN</div>
-        <div style={{ fontSize: 13, color: "#7a8099", marginTop: 6 }}>Chi sei?</div>
-      </div>
-      <div className="user-grid">
-        {TEAM_USERS.map(name => (
-          <div key={name} className="user-avatar-wrap" onClick={() => onSelect(name)}>
-            <div className="user-avatar">
-              <img src={getAvatarUrl(name)} alt={name}
-                onError={e => {
-                  if (e.target.src && e.target.src.endsWith(".jpg")) {
-                    e.target.src = getAvatarUrl(name).replace(".jpg", ".png");
-                  } else {
-                    e.target.style.display = "none";
-                    e.target.parentNode.innerHTML = `<span style="font-size:32px;color:#4f8ef7;font-weight:700">${name[0]}</span>`;
-                  }
-                }}
-              />
-            </div>
-            <div className="user-name">{name}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
-  const [currentUser, setCurrentUser] = useState(null);
+  const currentUser = "LabScan";
   const [appReady, setAppReady] = useState(false);
   const [screen, setScreen] = useState("home");
   const [samples, setSamples] = useState([]);
@@ -1197,14 +1159,13 @@ export default function App() {
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(null), 1800); };
 
-  async function handleUserSelect(name) {
-    setCurrentUser(name);
-    const data = await loadUserCampioni(name);
-    setSamples(data);
-    // Fetch shelf positions for all loaded samples
-    const ids = [...new Set(data.map(s => s.code).filter(Boolean))];
-    fetchScaffali(ids).then(map => setScaffaleMap(map));
-  }
+  useEffect(() => {
+    loadUserCampioni(currentUser).then(data => {
+      setSamples(data);
+      const ids = [...new Set(data.map(s => s.code).filter(Boolean))];
+      fetchScaffali(ids).then(map => setScaffaleMap(map));
+    });
+  }, []);
 
   async function handleSave(updates) {
     const m = new Map(updates.map(u => [u.id, u.data]));
@@ -1338,12 +1299,7 @@ export default function App() {
     </>
   );
 
-  if (!currentUser) return (
-    <>
-      <style>{css}</style>
-      <div className="app"><UserSelectScreen onSelect={handleUserSelect} /></div>
-    </>
-  );
+
 
   return (
     <>
@@ -1352,12 +1308,7 @@ export default function App() {
         <div className="header">
           <div className="header-logo">LAB·SCAN</div>
           <div style={{ display: "flex", gap: 8, marginLeft: "auto", alignItems: "center" }}>
-            {/* User avatar in header */}
-            <div style={{ width: 28, height: 28, borderRadius: "50%", overflow: "hidden", background: "#22263a", border: "2px solid #2e3350", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
-              onClick={() => { setCurrentUser(null); setSamples([]); }}>
-              <img src={getAvatarUrl(currentUser)} alt={currentUser} style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                onError={e => { e.target.style.display = "none"; e.target.parentNode.innerHTML = `<span style="font-size:13px;color:#4f8ef7;font-weight:700">${currentUser[0]}</span>`; }} />
-            </div>
+
             {screen === "list" && <>
               <span style={{ fontSize: 11, color: "#7a8099", fontFamily: "'JetBrains Mono'" }}>{filled}/{grouped.length}</span>
               {grouped.length > 0 && <button className="btn-sm" onClick={() => setScreen("summary")}>📋 Riepilogo</button>}
@@ -1370,7 +1321,7 @@ export default function App() {
           <div className="screen" style={{ justifyContent: "center", gap: 24 }}>
             <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: 48, marginBottom: 8 }}>🧪</div>
-              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: "#4f8ef7" }}>Ciao, {currentUser}</div>
+              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: "#4f8ef7" }}>LAB·SCAN</div>
               <div style={{ fontSize: 13, color: "#7a8099", marginTop: 6 }}>Cosa vuoi fare?</div>
             </div>
 
