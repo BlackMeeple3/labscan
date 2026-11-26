@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase, SUPABASE_CONFIGURED, getAvatarUrl } from "./supabase.js";
 
 // Utenti dell'app: devono coincidere con i nomi usati dalle macro Excel (user_name)
@@ -140,8 +140,6 @@ const css = `
   .sum-val { font-family: 'JetBrains Mono', monospace; color: #e8eaf0; font-weight: 600; font-size: 13px; }
   .sum-empty { color: #2e3350; font-family: 'JetBrains Mono', monospace; }
   .sum-note { font-size: 12px; color: #7a8099; font-style: italic; margin-top: 2px; }
-  .code-input-big { background: #22263a; border: 2px solid #4f8ef7; border-radius: 12px; padding: 14px 16px; font-family: 'JetBrains Mono', monospace; font-size: 24px; font-weight: 700; color: #e8eaf0; text-align: center; letter-spacing: 3px; width: 100%; outline: none; }
-  .code-preview { font-family: 'JetBrains Mono', monospace; font-size: 22px; font-weight: 700; color: #4f8ef7; text-align: center; letter-spacing: 3px; padding: 8px 0; }
   .info-tabs { display: flex; gap: 6px; }
   .info-tab { padding: 8px 14px; border-radius: 8px; border: 1px solid #2e3350; background: #22263a; color: #7a8099; font-size: 12px; cursor: pointer; font-weight: 600; }
   .info-tab.on { background: #2a4a8a; border-color: #4f8ef7; color: #4f8ef7; }
@@ -191,22 +189,6 @@ const STUFE = [
 ];
 // Unit derived from allestimento label
 function getUnit(a) { if (!a) return ""; if (a.includes("Vassoio")) return "g"; return "ml"; }
-const PATTERN = /\b(\d{2}LD\d{5})\b/i;
-const NOISE_PATTERNS = [
-  /^testo\s+(trovato|estratto)/i, /^codice\s+non\s+trovato/i,
-  /^nessun\s+(codice|campione)/i, /^riga\s*\d+/i,
-  /^ecco\s+il\s+testo/i, /^il\s+documento\s+contiene/i,
-  /^ho\s+(trovato|estratto|analizzato)/i, /^non\s+(riesco|trovo)/i,
-  /^risultato/i, /^\s*---+\s*$/, /^nota:/i, /^output:/i,
-];
-function isNoiseLine(l) { return NOISE_PATTERNS.some(p => p.test(l.trim())); }
-function extractSamplesFromLines(text) {
-  return text.split("\n").map(l => l.trim()).filter(l => l.length > 1 && !isNoiseLine(l))
-    .map((line, i) => {
-      const m = line.match(PATTERN);
-      return { id: crypto.randomUUID(), code: m ? m[1].toUpperCase() : null, rawText: line, data: null };
-    });
-}
 function emptyData() { return { pesata: "", pesata2: "", pesata3: "", grammatura: "", tipo_campione: null, superficie: "", allestimento: null, volume: "", articoli: "", stufa: null, inizio_contatto: "", ot: "", note: "" }; }
 function hasAnyData(d) { return d && Object.values(d).some(v => v !== null && v !== "" && v !== undefined); }
 
@@ -243,12 +225,6 @@ function groupSamples(samples) {
   }
   return result;
 }
-
-function padCode(digits) {
-  const year = new Date().getFullYear().toString().slice(-2);
-  return `${year}LD${digits.padStart(5, "0")}`;
-}
-
 
 // ── Supabase helpers ──────────────────────────────────────────────────────────
 async function loadUserCampioni(userName, onlyToday = false) {
@@ -561,150 +537,6 @@ function SummaryScreen({ samples, userName }) {
           </div>
         );
       })}
-    </div>
-  );
-}
-
-function ManualCodeOverlay({ onConfirm, onClose, currentUser }) {
-  const [digits, setDigits] = useState("");
-  const [macrocat, setMacrocat] = useState(null); // "QM" | "MS"
-  const [voiceNote, setVoiceNote] = useState("");
-  const [photoFile, setPhotoFile] = useState(null);
-  const [photoPreview, setPhotoPreview] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const inputRef = useRef();
-  const fileRef = useRef();
-
-  useEffect(() => {
-    // Auto-focus the code input on mount
-    setTimeout(() => inputRef.current?.focus(), 100);
-  }, []);
-
-  const year = new Date().getFullYear().toString().slice(-2);
-  const trimmed = digits.replace(/\D/g, "").slice(0, 5);
-  const preview = trimmed ? padCode(trimmed) : `${year}LD_____`;
-  const isReady = trimmed.length > 0;
-
-  function handlePhotoSelect(e) {
-    const file = e.target.files?.[0]; if (!file) return;
-    // Resize to low resolution before upload
-    const img = new Image();
-    const reader = new FileReader();
-    reader.onload = ev => {
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        const maxW = 800;
-        const scale = Math.min(1, maxW / img.width);
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
-        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob(blob => {
-          setPhotoFile(new File([blob], file.name, { type: "image/jpeg" }));
-          setPhotoPreview(canvas.toDataURL("image/jpeg", 0.7));
-        }, "image/jpeg", 0.7);
-      };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
-  }
-
-  async function handleConfirm() {
-    if (!isReady) return;
-    const code = padCode(trimmed);
-    const sampleId = crypto.randomUUID();
-    let attachmentUrl = null;
-
-    if (photoFile && SUPABASE_CONFIGURED && supabase) {
-      setUploading(true);
-      try {
-        const ext = "jpg";
-        const path = `${currentUser}/${code}_${sampleId}.${ext}`;
-        const { error } = await supabase.storage.from("allegati").upload(path, photoFile, { contentType: "image/jpeg", upsert: true });
-        if (!error) {
-          const { data } = supabase.storage.from("allegati").getPublicUrl(path);
-          attachmentUrl = data.publicUrl;
-        }
-      } catch (_) {}
-      setUploading(false);
-    }
-
-    const note = voiceNote || "";
-    const rawText = [code, note, attachmentUrl ? "📎 foto allegata" : ""].filter(Boolean).join(" — ");
-    onConfirm({ id: sampleId, code, rawText, attachmentUrl, note, tipologia_analisi: macrocat });
-  }
-
-  return (
-    <div className="overlay-bg" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="sheet">
-        <div className="handle" />
-        <div className="sh-title">Aggiungi campione</div>
-
-        {/* Codice — autoFocus */}
-        <div>
-          <div className="field-label">Cifre del codice</div>
-          <div className="code-preview">{preview}</div>
-          <input
-            ref={inputRef}
-            className="code-input-big"
-            type="number" inputMode="numeric" placeholder="es. 564"
-            value={digits}
-            onChange={e => setDigits(e.target.value.replace(/\D/g, "").slice(0, 5))}
-            autoFocus
-          />
-          <div style={{ fontSize: 11, color: "#7a8099", marginTop: 6, textAlign: "center" }}>
-            Digita le cifre → si completa con zeri
-          </div>
-        </div>
-
-        {/* Macrocategoria */}
-        <div>
-          <div className="field-label">Macrocategoria</div>
-          <div className="chip-row">
-            {["QM", "MS"].map(m => (
-              <div key={m} className={`chip ${macrocat === m ? "on" : ""}`}
-                style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono'" }}
-                onClick={() => setMacrocat(macrocat === m ? null : m)}>
-                {m}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="divider" />
-
-        {/* Foto allegato */}
-        <div>
-          <div className="field-label">Foto allegato (opzionale)</div>
-          <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handlePhotoSelect} />
-          {photoPreview ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <img src={photoPreview} alt="" style={{ width: "100%", maxHeight: 160, objectFit: "cover", borderRadius: 10, opacity: 0.85 }} />
-              <button className="btn-sm" onClick={() => { setPhotoFile(null); setPhotoPreview(null); }}>✕ Rimuovi foto</button>
-            </div>
-          ) : (
-            <button className="btn btn-secondary" onClick={() => fileRef.current?.click()}>
-              📷 Scatta / carica foto
-            </button>
-          )}
-          <div style={{ fontSize: 11, color: "#7a8099", marginTop: 6 }}>
-            Salvata in bassa risoluzione nel bucket allegati
-          </div>
-        </div>
-
-        {/* Nota testuale */}
-        <div>
-          <div className="field-label">Nota (opzionale)</div>
-          <textarea rows={2} value={voiceNote} onChange={e => setVoiceNote(e.target.value)}
-            placeholder="Note sul campione… (usa 🎤 sulla tastiera)" />
-        </div>
-
-        <div className="row">
-          <button className="btn btn-secondary" style={{ width: 56 }} onClick={onClose}>✕</button>
-          <button className="btn btn-primary f1" disabled={!isReady || uploading} onClick={handleConfirm}>
-            {uploading ? "Caricamento…" : `✓ Aggiungi ${isReady ? preview : ""}`}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -1181,10 +1013,10 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null); // scelto a ogni avvio
   const [loadingSamples, setLoadingSamples] = useState(false);
   const [appReady, setAppReady] = useState(false);
-  const [screen, setScreen] = useState("home");
+  const [screen, setScreen] = useState("list"); // "list" | "summary"
+  const [reloadKey, setReloadKey] = useState(0);
   const [samples, setSamples] = useState([]);
   const [activeSample, setActiveSample] = useState(null);
-  const [showManualCode, setShowManualCode] = useState(false);
   const [taken, setTaken] = useState(new Set());
   const [scaffaleMap, setScaffaleMap] = useState({});
   const [selectMode, setSelectMode] = useState(false);
@@ -1214,11 +1046,10 @@ export default function App() {
       fetchScaffali(ids).then(map => { if (!cancelled) setScaffaleMap(map); });
     });
     return () => { cancelled = true; };
-  }, [currentUser]);
+  }, [currentUser, reloadKey]);
 
   function switchUser() {
     setActiveSample(null);
-    setShowManualCode(false);
     setUnificaOverlay(null);
     setSelectMode(false);
     setUnificaMode(false);
@@ -1226,7 +1057,7 @@ export default function App() {
     setTaken(new Set());
     setSamples([]);
     setScaffaleMap({});
-    setScreen("home");
+    setScreen("list");
     setCurrentUser(null);
   }
 
@@ -1372,9 +1203,9 @@ export default function App() {
           <div className="header-logo">LAB·SCAN</div>
           <div style={{ display: "flex", gap: 8, marginLeft: "auto", alignItems: "center" }}>
 
-            {screen === "list" && <>
+            {currentUser && screen === "list" && !loadingSamples && grouped.length > 0 && <>
               <span style={{ fontSize: 11, color: "#7a8099", fontFamily: "'JetBrains Mono'" }}>{filled}/{grouped.length}</span>
-              {grouped.length > 0 && <button className="btn-sm" onClick={() => setScreen("summary")}>📋 Riepilogo</button>}
+              <button className="btn-sm" onClick={() => setScreen("summary")}>📋 Riepilogo</button>
             </>}
             {currentUser && screen === "summary" && <button className="btn-sm" onClick={() => setScreen("list")}>← Lista</button>}
             {currentUser && (
@@ -1388,34 +1219,13 @@ export default function App() {
 
         {!currentUser && <UserSelectScreen onSelect={setCurrentUser} />}
 
-        {currentUser && screen === "home" && (
-          <div className="screen" style={{ justifyContent: "center", gap: 24 }}>
-            <div style={{ textAlign: "center" }}>
-              <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
-                <UserAvatar name={currentUser} size={72} />
-              </div>
-              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: "#4f8ef7" }}>Ciao {currentUser}</div>
-              <div style={{ fontSize: 13, color: "#7a8099", marginTop: 6 }}>Cosa vuoi fare?</div>
-            </div>
-
-            {loadingSamples ? (
-              <div className="loading" style={{ minHeight: 80 }}><div className="spinner" /></div>
-            ) : (
-              <>
-                {samples.length > 0 && (
-                  <button className="btn btn-secondary" onClick={() => setScreen("list")}>
-                    📋 Continua — {grouped.length} campioni ({filled} compilati)
-                  </button>
-                )}
-                <button className="btn btn-secondary" onClick={() => { setSamples([]); setScreen("list"); }}>+ Sessione vuota manuale</button>
-              </>
-            )}
-            <button className="btn-sm" style={{ alignSelf: "center" }} onClick={switchUser}>↩ Cambia utente</button>
+        {currentUser && screen === "list" && loadingSamples && (
+          <div className="screen" style={{ justifyContent: "center" }}>
+            <div className="loading" style={{ minHeight: 120 }}><div className="spinner" /></div>
           </div>
         )}
 
-
-        {screen === "list" && (
+        {currentUser && screen === "list" && !loadingSamples && (
           <div className="screen">
             {grouped.length > 0 ? (() => {
               return <>
@@ -1517,30 +1327,16 @@ export default function App() {
                 </div>
               </>;
             })() : (
-              <div style={{ textAlign: "center", padding: "32px 0" }}>
-                <div style={{ fontSize: 32, marginBottom: 10 }}>🔍</div>
-                <div style={{ color: "#7a8099", fontSize: 14 }}>Nessun campione. Aggiungi manualmente.</div>
+              <div style={{ textAlign: "center", padding: "32px 0", display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
+                <div style={{ fontSize: 32 }}>🔍</div>
+                <div style={{ color: "#7a8099", fontSize: 14 }}>Nessun campione per {currentUser}.<br />Caricali da Excel e poi ricarica.</div>
+                <button className="btn-sm" onClick={() => setReloadKey(k => k + 1)}>↻ Ricarica</button>
               </div>
             )}
-            <button className="btn btn-secondary" onClick={() => setShowManualCode(true)}>+ Aggiungi campione manuale</button>
           </div>
         )}
 
-        {screen === "summary" && <SummaryScreen samples={samples} userName={currentUser} />}
-
-        {showManualCode && (
-          <ManualCodeOverlay
-            currentUser={currentUser}
-            onConfirm={({ id, code, rawText, attachmentUrl, note, tipologia_analisi }) => {
-              const newS = { id: id || crypto.randomUUID(), code, rawText, attachmentUrl, tipologia_analisi: tipologia_analisi || null, data: note ? { ...emptyData(), note } : null };
-              setSamples(prev => [...prev, newS]);
-              upsertCampione(currentUser, newS);
-              setShowManualCode(false);
-              showToast("Campione aggiunto");
-            }}
-            onClose={() => setShowManualCode(false)}
-          />
-        )}
+        {currentUser && screen === "summary" && <SummaryScreen samples={samples} userName={currentUser} />}
 
         {unificaOverlay && (
           <UnificaOverlay overlay={unificaOverlay} onSave={handleUnificaSave} onClose={() => setUnificaOverlay(null)} />
