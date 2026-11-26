@@ -1,5 +1,8 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { supabase, SUPABASE_CONFIGURED } from "./supabase.js";
+import { supabase, SUPABASE_CONFIGURED, getAvatarUrl } from "./supabase.js";
+
+// Utenti dell'app: devono coincidere con i nomi usati dalle macro Excel (user_name)
+const APP_USERS = ["Fra", "Alby"];
 
 const SHELF_URL = "https://vkbococuppstxocdlpvl.supabase.co/rest/v1/campioni";
 const SHELF_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZrYm9jb2N1cHBzdHhvY2RscHZsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1NzM0MjYsImV4cCI6MjA5NjE0OTQyNn0.fy8wsukcKANBOBPlHDXxlXKHXoml2A7jfcsbdOtTsCo";
@@ -60,6 +63,9 @@ const css = `
   .btn-secondary { background: #22263a; color: #e8eaf0; padding: 12px 18px; font-size: 14px; border: 1px solid #2e3350; width: 100%; }
   .btn-success { background: #2ecc71; color: #fff; padding: 14px 20px; font-size: 15px; width: 100%; }
   .btn-danger { background: #e74c3c; color: #fff; padding: 12px 18px; font-size: 14px; }
+  .user-pick { background: #1a1d27; border: 1px solid #2e3350; border-radius: 16px; padding: 18px 20px; display: flex; flex-direction: column; align-items: center; gap: 12px; color: #e8eaf0; font-family: 'DM Sans', sans-serif; font-size: 16px; font-weight: 700; cursor: pointer; transition: border-color 0.15s, transform 0.1s; -webkit-user-select: none; user-select: none; }
+  .user-pick:hover { border-color: #4f8ef7; }
+  .user-pick:active { transform: scale(0.97); border-color: #4f8ef7; }
   .btn-sm { background: #22263a; color: #7a8099; padding: 8px 14px; font-size: 12px; border: 1px solid #2e3350; border-radius: 8px; cursor: pointer; font-family: 'DM Sans', sans-serif; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
   .btn:disabled, .btn-sm:disabled { opacity: 0.38; pointer-events: none; }
   .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; flex: 1; min-height: 300px; }
@@ -1138,8 +1144,40 @@ function UnificaOverlay({ overlay, onSave, onClose }) {
 
 
 // ── Main App ──────────────────────────────────────────────────────────────────
+// ── Selezione utente ──────────────────────────────────────────────────────────
+function UserAvatar({ name, size = 96 }) {
+  const [broken, setBroken] = useState(false);
+  const url = getAvatarUrl(name);
+  if (!url || broken) return (
+    <div style={{ width: size, height: size, borderRadius: "50%", background: "#22263a", border: "2px solid #2e3350", display: "flex", alignItems: "center", justifyContent: "center", fontSize: Math.round(size * 0.42), fontWeight: 700, color: "#4f8ef7", fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}>
+      {name[0]}
+    </div>
+  );
+  return <img src={url} alt={name} onError={() => setBroken(true)} style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", border: "2px solid #2e3350", display: "block", flexShrink: 0 }} />;
+}
+
+function UserSelectScreen({ onSelect }) {
+  return (
+    <div className="screen" style={{ justifyContent: "center", alignItems: "center", gap: 28 }}>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: "#4f8ef7" }}>LAB·SCAN</div>
+        <div style={{ fontSize: 14, color: "#7a8099", marginTop: 6 }}>Chi sei?</div>
+      </div>
+      <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
+        {APP_USERS.map(name => (
+          <button key={name} className="user-pick" onClick={() => onSelect(name)}>
+            <UserAvatar name={name} size={96} />
+            <span>{name}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
-  const currentUser = "LabScan";
+  const [currentUser, setCurrentUser] = useState(null); // scelto a ogni avvio
+  const [loadingSamples, setLoadingSamples] = useState(false);
   const [appReady, setAppReady] = useState(false);
   const [screen, setScreen] = useState("home");
   const [samples, setSamples] = useState([]);
@@ -1159,13 +1197,36 @@ export default function App() {
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(null), 1800); };
 
+  // Carica i campioni dell'utente scelto (e ricarica quando si cambia utente)
   useEffect(() => {
+    if (!currentUser) return;
+    let cancelled = false;
+    setLoadingSamples(true);
+    setSamples([]);
+    setScaffaleMap({});
     loadUserCampioni(currentUser).then(data => {
+      if (cancelled) return;
       setSamples(data);
+      setLoadingSamples(false);
       const ids = [...new Set(data.map(s => s.code).filter(Boolean))];
-      fetchScaffali(ids).then(map => setScaffaleMap(map));
+      fetchScaffali(ids).then(map => { if (!cancelled) setScaffaleMap(map); });
     });
-  }, []);
+    return () => { cancelled = true; };
+  }, [currentUser]);
+
+  function switchUser() {
+    setActiveSample(null);
+    setShowManualCode(false);
+    setUnificaOverlay(null);
+    setSelectMode(false);
+    setUnificaMode(false);
+    setSelectIds(new Set());
+    setTaken(new Set());
+    setSamples([]);
+    setScaffaleMap({});
+    setScreen("home");
+    setCurrentUser(null);
+  }
 
   async function handleSave(updates) {
     const m = new Map(updates.map(u => [u.id, u.data]));
@@ -1313,24 +1374,41 @@ export default function App() {
               <span style={{ fontSize: 11, color: "#7a8099", fontFamily: "'JetBrains Mono'" }}>{filled}/{grouped.length}</span>
               {grouped.length > 0 && <button className="btn-sm" onClick={() => setScreen("summary")}>📋 Riepilogo</button>}
             </>}
-            {screen === "summary" && <button className="btn-sm" onClick={() => setScreen("list")}>← Lista</button>}
+            {currentUser && screen === "summary" && <button className="btn-sm" onClick={() => setScreen("list")}>← Lista</button>}
+            {currentUser && (
+              <button onClick={switchUser} title={`${currentUser} — tocca per cambiare utente`} aria-label="Cambia utente"
+                style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex" }}>
+                <UserAvatar name={currentUser} size={30} />
+              </button>
+            )}
           </div>
         </div>
 
-        {screen === "home" && (
+        {!currentUser && <UserSelectScreen onSelect={setCurrentUser} />}
+
+        {currentUser && screen === "home" && (
           <div className="screen" style={{ justifyContent: "center", gap: 24 }}>
             <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 48, marginBottom: 8 }}>🧪</div>
-              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: "#4f8ef7" }}>LAB·SCAN</div>
+              <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
+                <UserAvatar name={currentUser} size={72} />
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: "#4f8ef7" }}>Ciao {currentUser}</div>
               <div style={{ fontSize: 13, color: "#7a8099", marginTop: 6 }}>Cosa vuoi fare?</div>
             </div>
 
-            {samples.length > 0 && (
-              <button className="btn btn-secondary" onClick={() => setScreen("list")}>
-                📋 Continua — {grouped.length} campioni ({filled} compilati)
-              </button>
+            {loadingSamples ? (
+              <div className="loading" style={{ minHeight: 80 }}><div className="spinner" /></div>
+            ) : (
+              <>
+                {samples.length > 0 && (
+                  <button className="btn btn-secondary" onClick={() => setScreen("list")}>
+                    📋 Continua — {grouped.length} campioni ({filled} compilati)
+                  </button>
+                )}
+                <button className="btn btn-secondary" onClick={() => { setSamples([]); setScreen("list"); }}>+ Sessione vuota manuale</button>
+              </>
             )}
-            <button className="btn btn-secondary" onClick={() => { setSamples([]); setScreen("list"); }}>+ Sessione vuota manuale</button>
+            <button className="btn-sm" style={{ alignSelf: "center" }} onClick={switchUser}>↩ Cambia utente</button>
           </div>
         )}
 
