@@ -8,33 +8,35 @@ const SHELF_URL = "https://vkbococuppstxocdlpvl.supabase.co/rest/v1/campioni";
 const SHELF_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZrYm9jb2N1cHBzdHhvY2RscHZsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1NzM0MjYsImV4cCI6MjA5NjE0OTQyNn0.fy8wsukcKANBOBPlHDXxlXKHXoml2A7jfcsbdOtTsCo";
 
 async function fetchScaffali(ids) {
-  // ids: array of codes like "26LD01228"
+  // ids: array of codes like "26LD01228" or with sub-number "26LD01228/01"
   if (!ids || ids.length === 0) return {};
   try {
-    const idList = ids.join(",");
+    // Cerca sia l'ID completo sia quello base (senza /01): lo scaffale è registrato sul base
+    const baseOf = id => (String(id).match(/^\d{2}LD\d{5}/i) || [String(id)])[0];
+    const queryIds = [...new Set(ids.flatMap(id => [id, baseOf(id)]))];
+    const idList = encodeURIComponent(queryIds.map(id => `"${id}"`).join(","));
     const res = await fetch(
       `${SHELF_URL}?id_campione=in.(${idList})&select=id_campione,scaffale,a_terra,a_frigo,smaltimento`,
       { headers: { apikey: SHELF_KEY, Authorization: "Bearer " + SHELF_KEY } }
     );
     if (!res.ok) return {};
     const data = await res.json();
-    const map = {};
+    const found = {};
     for (const r of data) {
       const id = r.id_campione;
-      if (r.scaffale != null && r.scaffale > 0) map[id] = { label: String(r.scaffale), color: "#4f8ef7" };
-      else if (r.a_frigo === true) map[id] = { label: "❄️", color: "#00bcd4" };
-      else if (r.a_terra === true) map[id] = { label: "T", color: "#f39c12" };
+      if (r.scaffale != null && r.scaffale > 0) found[id] = { label: String(r.scaffale), color: "#4f8ef7" };
+      else if (r.a_frigo === true) found[id] = { label: "❄️", color: "#00bcd4" };
+      else if (r.a_terra === true) found[id] = { label: "T", color: "#f39c12" };
       else if (r.smaltimento != null) {
         const s = r.smaltimento;
         const isKor = (s === -13 || s === -14);
-        map[id] = { label: isKor ? "KOR" : String(s), color: "#e74c3c" };
+        found[id] = { label: isKor ? "KOR" : String(s), color: "#e74c3c" };
       }
-      else map[id] = { label: "S", color: "#7a8099" };
+      else found[id] = { label: "S", color: "#7a8099" };
     }
-    // IDs not found → null
-    for (const id of ids) {
-      if (!(id in map)) map[id] = null;
-    }
+    // Per ogni codice: prima l'ID completo, poi quello base; se non trovato → null
+    const map = {};
+    for (const id of ids) map[id] = found[id] ?? found[baseOf(id)] ?? null;
     return map;
   } catch (_) { return {}; }
 }
